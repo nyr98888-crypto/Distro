@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Distro Facebook Sync",
+  "version": "1.0",
+  "description": "סנכרון קבוצות פייסבוק אל Distro / ListPilot",
+  "permissions": ["cookies", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://*.facebook.com/*",
+    "https://*.vercel.app/*",
+    "http://localhost:3000/*"
+  ],
+  "action": {
+    "default_title": "Distro - סנכרון קבוצות",
+    "default_popup": "popup.html"
+  }
+}

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Distro Sync</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="card">
+      <header class="header">
+        <div class="logo">D</div>
+        <div>
+          <h1>Distro - סנכרון קבוצות פייסבוק</h1>
+          <p class="subtitle">שולף קבוצות מהחשבון המחובר ושולח לשרת המקומי</p>
+        </div>
+      </header>
+
+      <button id="syncBtn" type="button" class="primary">
+        סנכרן קבוצות עכשיו
+      </button>
+
+      <p id="status" class="status" role="status" aria-live="polite">
+        מוכן לסנכרון
+      </p>
+
+      <p class="hint">
+        ודאו שאתם מחוברים לפייסבוק. הסנכרון נשלח אל
+        <span dir="ltr">distro.vercel.app</span>
+      </p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
