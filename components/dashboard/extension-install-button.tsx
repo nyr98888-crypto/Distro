@@ -35,7 +35,7 @@ export function ExtensionInstallButton() {
         type="button"
         size="sm"
         variant="outline"
-        className="ms-auto gap-1.5"
+        className="gap-1.5 border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700 hover:text-white"
         onClick={() => setOpen(true)}
       >
         <Puzzle className="size-4" />

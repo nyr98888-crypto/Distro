@@ -1,3 +1,5 @@
+import Image from "next/image";
+import { redirect } from "next/navigation";
 import {
   getActiveAccountId,
   listChannelsForAccount,
@@ -10,6 +12,11 @@ export const dynamic = "force-dynamic";
 
 export default async function ChannelsPage() {
   const userId = await getAuthenticatedUserId();
+  const isProd = process.env.NODE_ENV === "production";
+
+  if (!userId && isProd) {
+    redirect("/signin");
+  }
 
   let accountId: string | null = null;
   let channels: Awaited<ReturnType<typeof listChannelsForAccount>> = [];
@@ -22,19 +29,54 @@ export default async function ChannelsPage() {
   }
 
   const needsLogin = !userId || !accountId;
+  const allowDevLogin = !isProd;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 text-right sm:px-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          ערוצי יעד וקבוצות
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          חפשו, תייגו והפעילו את הקבוצות שאליהן ListPilot יכול לפרסם.
-        </p>
-      </header>
+    <div className="space-y-6">
+      <div className="flex flex-col items-center justify-between gap-6 rounded-xl border border-slate-800 bg-slate-900 p-6 text-white shadow-sm md:flex-row">
+        <div className="flex items-center gap-4">
+          <Image
+            src="/logo.png"
+            alt="DISTRO Brand mark"
+            width={72}
+            height={72}
+            className="rounded-xl border border-slate-700 object-contain shadow-md"
+            priority
+          />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              ערוצי יעד וקבוצות
+            </h1>
+            <p className="mt-1 text-sm text-slate-400">
+              נהל את ערוצי ההפצה וסנכרן את הקבוצות שלך לחשבון
+            </p>
+          </div>
+        </div>
 
-      {needsLogin && (
+        <a
+          href="/distro-extension.zip"
+          download="distro-extension.zip"
+          className="flex items-center gap-3 rounded-lg bg-gradient-to-b from-slate-100 to-slate-200 px-5 py-2.5 font-semibold text-slate-900 shadow transition-all hover:from-white hover:to-slate-100 hover:shadow-md"
+        >
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+            />
+          </svg>
+          התקנת תוסף כרום לסנכרון
+        </a>
+      </div>
+
+      {needsLogin && allowDevLogin && (
         <DevLoginButton autoLogin={process.env.NODE_ENV === "development"} />
       )}
 

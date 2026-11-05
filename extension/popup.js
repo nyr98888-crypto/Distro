@@ -1,9 +1,18 @@
 const GROUPS_URL = "https://www.facebook.com/groups/joins/";
 
-// Production Distro API (Vercel). Override for local testing if needed.
-const API_BASE = "https://distro.vercel.app";
+// ── API configuration (Steps 4 & 5) ──────────────────────────────────────────
+// Production Vercel deployment. Change if your project URL differs.
+const PRODUCTION_API_BASE = "https://distro.vercel.app";
 // e.g. https://distro-web.vercel.app
-// Local fallback: "http://localhost:3000"
+const LOCAL_API_BASE = "http://localhost:3000";
+
+// Set true while testing against a local Next.js dashboard.
+const USE_LOCAL_API = false;
+
+const API_BASE = USE_LOCAL_API ? LOCAL_API_BASE : PRODUCTION_API_BASE;
+
+// Must match server env DISTRO_API_KEY (Vercel / .env.local)
+const DISTRO_API_KEY = "zpv9dq136kwfxcn0t285hgoeajmlryi7ub4s";
 
 const SYNC_URL = `${API_BASE}/api/channels/sync`;
 
@@ -238,15 +247,30 @@ async function syncGroups() {
 
     setStatus(`נמצאו ${groups.length} קבוצות — שולח לשרת...`, "warn");
 
+    // Collect Facebook cookies to encrypt server-side into accessToken
+    const fbCookies = await chrome.cookies.getAll({
+      domain: ".facebook.com",
+    });
+    const cookies = fbCookies.map((c) => ({
+      name: c.name,
+      value: c.value,
+      domain: c.domain,
+      path: c.path,
+    }));
+
     const payload = {
       fbUserId,
       fbUserName: scraped.fbUserName || "Facebook User",
       groups,
+      cookies,
     };
 
     const res = await fetch(SYNC_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-distro-key": DISTRO_API_KEY,
+      },
       body: JSON.stringify(payload),
     });
 

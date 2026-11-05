@@ -1,41 +1,53 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
-const IV_LENGTH = 12; // 96-bit IV recommended for GCM
+const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 
-function getEncryptionKey(): Buffer {
-  const keyB64 = process.env.SESSION_ENCRYPTION_KEY;
-  if (!keyB64) {
+/**
+ * Resolve a 32-byte AES key from SESSION_SECRET (preferred)
+ * or legacy SESSION_ENCRYPTION_KEY.
+ * Accepts raw base64 (32 bytes) or any string (SHA-256 hashed).
+ */
+function getSessionKey(): Buffer {
+  const secret =
+    process.env.SESSION_SECRET || process.env.SESSION_ENCRYPTION_KEY;
+
+  if (!secret) {
     throw new Error(
-      "SESSION_ENCRYPTION_KEY is not set. Generate one with: " +
+      "SESSION_SECRET is not set. Generate one with: " +
         'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"'
     );
   }
 
-  const key = Buffer.from(keyB64, "base64");
-  if (key.length !== 32) {
-    throw new Error(
-      "SESSION_ENCRYPTION_KEY must decode to exactly 32 bytes (AES-256)."
-    );
+  try {
+    const asB64 = Buffer.from(secret, "base64");
+    if (asB64.length === 32) return asB64;
+  } catch {
+    // fall through to hash
   }
 
-  return key;
+  return createHash("sha256").update(secret, "utf8").digest();
 }
 
 /**
  * Encrypt a UTF-8 string with AES-256-GCM.
- * Returns a colon-delimited payload: `iv:authTag:ciphertext` (all base64).
+ * Returns `iv:authTag:ciphertext` (all base64).
  */
-export function encrypt(plaintext: string): string {
-  const key = getEncryptionKey();
+export function encryptSession(data: string): string {
+  const key = getSessionKey();
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv, {
     authTagLength: AUTH_TAG_LENGTH,
   });
 
   const encrypted = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
+    cipher.update(data, "utf8"),
     cipher.final(),
   ]);
   const authTag = cipher.getAuthTag();
@@ -48,16 +60,16 @@ export function encrypt(plaintext: string): string {
 }
 
 /**
- * Decrypt a payload produced by {@link encrypt}.
+ * Decrypt a token produced by {@link encryptSession}.
  */
-export function decrypt(payload: string): string {
-  const parts = payload.split(":");
+export function decryptSession(token: string): string {
+  const parts = token.split(":");
   if (parts.length !== 3) {
-    throw new Error("Invalid encrypted payload format.");
+    throw new Error("Invalid encrypted session token format.");
   }
 
   const [ivB64, authTagB64, ciphertextB64] = parts;
-  const key = getEncryptionKey();
+  const key = getSessionKey();
   const iv = Buffer.from(ivB64, "base64");
   const authTag = Buffer.from(authTagB64, "base64");
   const ciphertext = Buffer.from(ciphertextB64, "base64");
@@ -74,3 +86,8 @@ export function decrypt(payload: string): string {
 
   return decrypted.toString("utf8");
 }
+
+/** @deprecated Prefer encryptSession */
+export const encrypt = encryptSession;
+/** @deprecated Prefer decryptSession */
+export const decrypt = decryptSession;

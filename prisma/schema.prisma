@@ -19,16 +19,17 @@ model User {
 }
 
 model ConnectedAccount {
-  id             String        @id @default(uuid())
-  userId         String
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  platformName   String        @default("facebook")
-  identifier     String
-  sessionPayload String
-  status         String        @default("ACTIVE")
-  lastSyncedAt   DateTime      @default(now())
-  channels       Channel[]
-  jobs           PublishJob[]
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platformName String   @default("facebook")
+  identifier   String
+  /// AES-256-GCM encrypted Facebook cookies / access tokens (at rest)
+  accessToken  String   @default("")
+  status       String   @default("ACTIVE")
+  lastSyncedAt DateTime @default(now())
+  channels     Channel[]
+  jobs         PublishJob[]
 }
 
 model Channel {

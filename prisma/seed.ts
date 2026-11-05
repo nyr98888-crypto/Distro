@@ -78,7 +78,7 @@ async function main() {
         userId: user.id,
         platformName: "facebook",
         identifier: "demo_fb_user_42",
-        sessionPayload: JSON.stringify({ seeded: true }),
+        accessToken: "",
         status: "ACTIVE",
         lastSyncedAt: new Date(),
       },

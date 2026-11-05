@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
-import { encrypt } from "@/lib/crypto";
+import { encryptSession } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 
 const cookieSchema = z.object({
@@ -21,7 +21,7 @@ const syncSessionSchema = z.object({
  * POST /api/session/sync
  *
  * Accepts browser session cookies from an authenticated client,
- * encrypts them at rest with AES-256-GCM, and upserts a ConnectedAccount.
+ * encrypts them at rest with AES-256-GCM into ConnectedAccount.accessToken.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -51,7 +51,6 @@ export async function POST(request: NextRequest) {
 
     const { cookies: sessionCookies, platformName } = parsed.data;
 
-    // Derive a stable identifier from a well-known cookie (e.g. c_user) or fallback
     const identifier =
       parsed.data.identifier ??
       sessionCookies.find((c) => c.name === "c_user")?.value ??
@@ -65,10 +64,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const sessionPayload = encrypt(JSON.stringify(sessionCookies));
+    const accessToken = encryptSession(JSON.stringify(sessionCookies));
     const now = new Date();
 
-    // No composite unique in schema — find-then-update/create
     const existing = await prisma.connectedAccount.findFirst({
       where: { userId, platformName, identifier },
       select: { id: true },
@@ -78,7 +76,7 @@ export async function POST(request: NextRequest) {
       ? await prisma.connectedAccount.update({
           where: { id: existing.id },
           data: {
-            sessionPayload,
+            accessToken,
             status: "ACTIVE",
             lastSyncedAt: now,
           },
@@ -89,7 +87,7 @@ export async function POST(request: NextRequest) {
             userId,
             platformName,
             identifier,
-            sessionPayload,
+            accessToken,
             status: "ACTIVE",
             lastSyncedAt: now,
           },

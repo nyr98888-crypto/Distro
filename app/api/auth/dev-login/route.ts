@@ -6,17 +6,14 @@ const COOKIE_NAME = "listpilot_user_id";
 /**
  * POST /api/auth/dev-login
  * Ensures demo User + ConnectedAccount + sample channels exist,
- * then sets the session cookie. Allowed in development, or when
- * ALLOW_DEV_LOGIN=true.
+ * then sets the session cookie.
+ *
+ * Hard-blocked in production. Local/dev only.
  */
 export async function POST(request: NextRequest) {
-  const allow =
-    process.env.NODE_ENV === "development" ||
-    process.env.ALLOW_DEV_LOGIN === "true";
-
-  if (!allow) {
+  if (process.env.NODE_ENV === "production") {
     return NextResponse.json(
-      { success: false, error: "Dev login is disabled" },
+      { success: false, error: "Dev login is disabled in production" },
       { status: 403 }
     );
   }
@@ -39,7 +36,6 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
-      // 30 days — local demo convenience
       maxAge: 60 * 60 * 24 * 30,
     });
 

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { Queue, type JobsOptions } from "bullmq";
 import IORedis from "ioredis";
 import { prisma } from "@/lib/prisma";
@@ -7,12 +9,14 @@ import { prisma } from "@/lib/prisma";
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
 
 let connection: IORedis | null = null;
+let queue: Queue<PublishJobPayload> | null = null;
 
 function getRedisConnection(): IORedis {
   if (!connection) {
     connection = new IORedis(REDIS_URL, {
       maxRetriesPerRequest: null, // required by BullMQ
       enableReadyCheck: false,
+      lazyConnect: true,
     });
   }
   return connection;
@@ -31,25 +35,33 @@ export type PublishJobPayload = {
 };
 
 /**
- * BullMQ queue for outbound publish jobs.
- *
- * Worker concurrency is enforced per-account via jobId grouping /
- * group keys in the worker (see `worker/publish-worker.ts`).
- * The queue itself uses a single shared connection; the worker
- * sets `concurrency: 1` inside each account group.
+ * Lazy BullMQ queue — avoids connecting during `next build`.
  */
-export const publishQueue = new Queue<PublishJobPayload>(PUBLISH_QUEUE_NAME, {
-  connection: getRedisConnection(),
-  defaultJobOptions: {
-    removeOnComplete: { count: 200 },
-    removeOnFail: { count: 500 },
-    attempts: 3,
-    backoff: {
-      type: "exponential",
-      delay: 30_000,
-    },
-  },
-});
+export function getPublishQueue(): Queue<PublishJobPayload> {
+  if (!queue) {
+    queue = new Queue<PublishJobPayload>(PUBLISH_QUEUE_NAME, {
+      connection: getRedisConnection(),
+      defaultJobOptions: {
+        removeOnComplete: { count: 200 },
+        removeOnFail: { count: 500 },
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 30_000,
+        },
+      },
+    });
+  }
+  return queue;
+}
+
+/** @deprecated Prefer getPublishQueue() */
+export const publishQueue = {
+  add: (...args: Parameters<Queue<PublishJobPayload>["add"]>) =>
+    getPublishQueue().add(...args),
+  getJob: (...args: Parameters<Queue<PublishJobPayload>["getJob"]>) =>
+    getPublishQueue().getJob(...args),
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -156,7 +168,7 @@ export async function schedulePublishCampaign(
         delay: delayMs,
       };
 
-      await publishQueue.add(
+      await getPublishQueue().add(
         "publish",
         {
           publishJobId: publishJob.id,
@@ -220,7 +232,7 @@ export async function promoteToUrgent(campaignId: string): Promise<{
     if (job.status !== "PENDING") continue;
 
     // Remove any existing delayed/waiting job with the same ID
-    const existing = await publishQueue.getJob(job.id);
+    const existing = await getPublishQueue().getJob(job.id);
     if (existing) {
       const state = await existing.getState();
       if (state === "delayed" || state === "waiting" || state === "prioritized") {
@@ -228,7 +240,7 @@ export async function promoteToUrgent(campaignId: string): Promise<{
       }
     }
 
-    await publishQueue.add(
+    await getPublishQueue().add(
       "publish",
       {
         publishJobId: job.id,
@@ -259,14 +271,16 @@ export async function promoteToUrgent(campaignId: string): Promise<{
  *   (BullMQ Pro / custom lock). The baseline here uses concurrency 1
  *   plus the jitter delays above to guarantee sequential pacing.
  */
-export const publishWorkerOptions = {
-  connection: getRedisConnection(),
-  concurrency: 1, // global sequential baseline
-  limiter: {
-    max: 1,
-    duration: 1_000, // at most 1 job claimed per second (extra safety)
-  },
-} as const;
+export function getPublishWorkerOptions() {
+  return {
+    connection: getRedisConnection(),
+    concurrency: 1, // global sequential baseline
+    limiter: {
+      max: 1,
+      duration: 1_000, // at most 1 job claimed per second (extra safety)
+    },
+  } as const;
+}
 
 /**
  * Pending jobs ready for dispatch, ordered so flash/urgent run first:

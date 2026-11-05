@@ -4,31 +4,98 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Distro Sync</title>
-    <link rel="stylesheet" href="popup.css" />
+    <style>
+      body {
+        width: 320px;
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #0f172a; /* Slate-900 */
+        color: #f8fafc; /* Slate-50 */
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background-color: #1e293b; /* Slate-800 */
+        padding: 16px;
+        border-bottom: 1px solid #334155;
+      }
+      .logo {
+        width: 44px;
+        height: 44px;
+        border-radius: 8px;
+        border: 1px solid #475569;
+        object-fit: cover;
+      }
+      .title {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+      }
+      .subtitle {
+        font-size: 11px;
+        color: #94a3b8; /* Slate-400 */
+        margin-top: 2px;
+      }
+      .content {
+        padding: 20px 16px;
+      }
+      button {
+        width: 100%;
+        background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+        color: #0f172a;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        transition: opacity 0.2s;
+      }
+      button:hover {
+        opacity: 0.95;
+      }
+      button:disabled {
+        opacity: 0.65;
+        cursor: wait;
+      }
+      .status {
+        margin-top: 14px;
+        font-size: 12px;
+        text-align: center;
+        color: #94a3b8;
+      }
+      .status.is-ok {
+        color: #34d399;
+      }
+      .status.is-warn {
+        color: #fbbf24;
+      }
+      .status.is-err {
+        color: #f87171;
+      }
+    </style>
   </head>
   <body>
-    <main class="card">
-      <header class="header">
-        <div class="logo">D</div>
-        <div>
-          <h1>Distro - סנכרון קבוצות פייסבוק</h1>
-          <p class="subtitle">שולף קבוצות מהחשבון המחובר ושולח לשרת המקומי</p>
-        </div>
-      </header>
-
-      <button id="syncBtn" type="button" class="primary">
-        סנכרן קבוצות עכשיו
-      </button>
-
-      <p id="status" class="status" role="status" aria-live="polite">
-        מוכן לסנכרון
-      </p>
-
-      <p class="hint">
-        ודאו שאתם מחוברים לפייסבוק. הסנכרון נשלח אל
-        <span dir="ltr">distro.vercel.app</span>
-      </p>
-    </main>
+    <div class="header">
+      <img src="icons/icon48.png" alt="DISTRO Logo" class="logo" />
+      <div>
+        <div class="title">DISTRO</div>
+        <div class="subtitle">סנכרון קבוצות פייסבוק מהיר</div>
+      </div>
+    </div>
+    <div class="content">
+      <button id="syncBtn" type="button">סנכרן קבוצות עכשיו</button>
+      <div id="status" class="status">
+        לחץ לסנכרון הקבוצות שלך עם המערכת
+      </div>
+    </div>
     <script src="popup.js"></script>
   </body>
 </html>

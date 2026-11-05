@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { PostComposer } from "@/components/dashboard/post-composer";
 import { DevLoginButton } from "@/components/dashboard/dev-login-button";
 import { getAuthenticatedUserId } from "@/lib/auth";
@@ -10,6 +11,11 @@ export const dynamic = "force-dynamic";
 
 export default async function ComposePage() {
   const userId = await getAuthenticatedUserId();
+  const isProd = process.env.NODE_ENV === "production";
+
+  if (!userId && isProd) {
+    redirect("/signin");
+  }
 
   let accountId: string | null = null;
   let channels: Awaited<ReturnType<typeof listChannelsForAccount>> = [];
@@ -22,6 +28,7 @@ export default async function ComposePage() {
   }
 
   const needsLogin = !userId || !accountId;
+  const allowDevLogin = !isProd;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-8 text-right sm:px-6">
@@ -34,7 +41,7 @@ export default async function ComposePage() {
         </p>
       </header>
 
-      {needsLogin && (
+      {needsLogin && allowDevLogin && (
         <DevLoginButton autoLogin={process.env.NODE_ENV === "development"} />
       )}
 

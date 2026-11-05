@@ -86,7 +86,7 @@ export async function ensureDemoWorkspace(): Promise<{
         userId: user.id,
         platformName: "facebook",
         identifier: DEMO_ACCOUNT_IDENTIFIER,
-        sessionPayload: JSON.stringify({ seeded: true, demo: true }),
+        accessToken: "",
         status: "ACTIVE",
         lastSyncedAt: new Date(),
       },

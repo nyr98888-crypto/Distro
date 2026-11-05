@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, getAuthenticatedUserId } from "@/lib/auth";
+import { encryptSession } from "@/lib/crypto";
 import { ensureDemoWorkspace } from "@/lib/demo-workspace";
 import { prisma } from "@/lib/prisma";
 
@@ -11,28 +12,55 @@ const groupSchema = z.object({
   url: z.string().url().optional().or(z.literal("")),
 });
 
+const cookieSchema = z.object({
+  name: z.string().min(1),
+  value: z.string(),
+  domain: z.string().optional(),
+  path: z.string().optional(),
+});
+
 const syncChannelsSchema = z.object({
   fbUserId: z.string().min(1),
   fbUserName: z.string().min(1),
   groups: z.array(groupSchema).min(1, "At least one group is required"),
+  /** Optional Facebook session cookies / tokens to encrypt at rest */
+  cookies: z.array(cookieSchema).optional(),
+  sessionCredentials: z.string().min(1).optional(),
 });
 
 const DEFAULT_TAGS = JSON.stringify(["פייסבוק", "אישי"]);
 const PLATFORM = "FACEBOOK";
 
+function assertDistroApiKey(request: NextRequest): NextResponse | null {
+  const expected = process.env.DISTRO_API_KEY;
+  if (!expected) {
+    console.error("[channels/sync] DISTRO_API_KEY is not configured");
+    return NextResponse.json(
+      { success: false, error: "Server misconfigured" },
+      { status: 500 }
+    );
+  }
+
+  const provided = request.headers.get("x-distro-key");
+  if (!provided || provided !== expected) {
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  return null;
+}
+
 /**
  * Resolve the active ListPilot user for extension sync.
- * Prefers the session cookie; in development falls back to the demo workspace.
+ * Prefers the session cookie; in non-production may fall back to demo workspace.
  */
 async function resolveUserId(): Promise<string> {
   const existing = await getAuthenticatedUserId();
   if (existing) return existing;
 
-  const allowDev =
-    process.env.NODE_ENV === "development" ||
-    process.env.ALLOW_DEV_LOGIN === "true";
-
-  if (allowDev) {
+  if (process.env.NODE_ENV !== "production") {
     const demo = await ensureDemoWorkspace();
     return demo.userId;
   }
@@ -43,10 +71,14 @@ async function resolveUserId(): Promise<string> {
 /**
  * POST /api/channels/sync
  *
- * Receives Facebook groups from the Chrome extension and upserts
- * ConnectedAccount + Channel rows for the active user.
+ * Requires header `x-distro-key: $DISTRO_API_KEY`.
+ * Upserts ConnectedAccount + Channel rows; encrypts session credentials
+ * into ConnectedAccount.accessToken before persisting to Turso/SQLite.
  */
 export async function POST(request: NextRequest) {
+  const authError = assertDistroApiKey(request);
+  if (authError) return authError;
+
   try {
     const userId = await resolveUserId();
 
@@ -72,10 +104,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { fbUserId, fbUserName, groups } = parsed.data;
+    const { fbUserId, fbUserName, groups, cookies, sessionCredentials } =
+      parsed.data;
     const now = new Date();
 
-    // Find or create ConnectedAccount for this Facebook user
+    const plaintextCredentials =
+      sessionCredentials ??
+      (cookies && cookies.length > 0
+        ? JSON.stringify({
+            fbUserId,
+            fbUserName,
+            cookies,
+            source: "chrome-extension",
+            lastGroupSyncAt: now.toISOString(),
+          })
+        : JSON.stringify({
+            fbUserId,
+            fbUserName,
+            source: "chrome-extension",
+            lastGroupSyncAt: now.toISOString(),
+          }));
+
+    const accessToken = encryptSession(plaintextCredentials);
+
     let account = await prisma.connectedAccount.findFirst({
       where: {
         userId,
@@ -84,18 +135,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const sessionPayload = JSON.stringify({
-      fbUserId,
-      fbUserName,
-      source: "chrome-extension",
-      lastGroupSyncAt: now.toISOString(),
-    });
-
     if (account) {
       account = await prisma.connectedAccount.update({
         where: { id: account.id },
         data: {
-          sessionPayload,
+          accessToken,
           status: "ACTIVE",
           lastSyncedAt: now,
           platformName: PLATFORM,
@@ -107,7 +151,7 @@ export async function POST(request: NextRequest) {
           userId,
           platformName: PLATFORM,
           identifier: fbUserId,
-          sessionPayload,
+          accessToken,
           status: "ACTIVE",
           lastSyncedAt: now,
         },
