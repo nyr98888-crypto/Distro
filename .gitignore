@@ -43,5 +43,9 @@ next-env.d.ts
 /prisma/*.db
 /prisma/*.db-journal
 
-# nested accidental scaffold
-/web/
+# Keep web/ tracked — it is the Vercel deploy root.
+# Ignore only its local install/build artifacts:
+/web/node_modules/
+/web/.next/
+/web/.env
+/web/.env*.local
