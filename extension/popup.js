@@ -2,8 +2,7 @@ const GROUPS_URL = "https://www.facebook.com/groups/joins/";
 
 // ── API configuration (Steps 4 & 5) ──────────────────────────────────────────
 // Production Vercel deployment. Change if your project URL differs.
-const PRODUCTION_API_BASE = "https://distro.vercel.app";
-// e.g. https://distro-web.vercel.app
+const PRODUCTION_API_BASE = "https://distro-theta.vercel.app";
 const LOCAL_API_BASE = "http://localhost:3000";
 
 // Set true while testing against a local Next.js dashboard.

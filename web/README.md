@@ -1,12 +1,14 @@
-# Distro / ListPilot (web)
+# Legacy / unused for Vercel
 
-This is the **active** Next.js App Router project deployed to Vercel.
+The **active** Distro app is the **repository root** (`../app`, `../package.json`).
+
+Vercel project `distro` uses **Root Directory = `./`** (not `web`).
+
+Do not set Root Directory to `web` — that produces `/web/web/package.json` path errors.
 
 ```bash
-cd web
-npm install
+cd ..   # repo root
 npm run build
-npm run dev
 ```
 
-On Vercel set **Root Directory** to `web`.
+Live app: https://distro-theta.vercel.app/dashboard/channels
