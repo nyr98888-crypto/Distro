@@ -1,45 +1,41 @@
-import Link from "next/link";
-import { DevLoginButton } from "@/components/dashboard/dev-login-button";
+import { redirect } from "next/navigation";
+import { ExtensionConnectPanel } from "@/components/signin/extension-connect-panel";
+import { getAuthenticatedUserId } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-export default function SignInPage() {
-  const isProd = process.env.NODE_ENV === "production";
+export default async function SignInPage() {
+  const allowDevLogin =
+    process.env.NODE_ENV !== "production" ||
+    process.env.ALLOW_DEV_LOGIN === "true";
+
+  const userId = await getAuthenticatedUserId();
+  if (userId) {
+    const account = await prisma.connectedAccount.findFirst({
+      where: { userId, status: "ACTIVE" },
+      select: { _count: { select: { channels: true } } },
+    });
+    if ((account?._count.channels ?? 0) > 0) {
+      redirect("/dashboard/channels");
+    }
+  }
 
   return (
     <div
       dir="rtl"
       lang="he"
-      className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground"
+      className="flex min-h-screen items-center justify-center bg-background px-4 py-10 text-foreground"
     >
-      <div className="w-full max-w-md space-y-6 rounded-xl border border-border bg-card p-6 text-right shadow-sm">
+      <div className="w-full max-w-lg space-y-6 rounded-xl border border-border bg-card p-6 text-right shadow-sm">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">התחברות</h1>
           <p className="text-sm text-muted-foreground">
-            יש להתחבר כדי לנהל קבוצות ולתזמן פוסטים ב־ListPilot.
+            יש להתחבר כדי לנהל קבוצות ולתזמן פוסטים ב־דסטרו.
           </p>
         </div>
 
-        {isProd ? (
-          <div className="space-y-3 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-            <p>
-              בסביבת ייצור יש להתחבר עם חשבון מאומת. התחברות בדיקה אוטומטית
-              אינה זמינה.
-            </p>
-            <p>
-              לאחר התחברות דרך התוסף / סנכרון סשן, חזרו אל{" "}
-              <Link
-                href="/dashboard/channels"
-                className="font-medium text-foreground underline underline-offset-2"
-              >
-                לוח הבקרה
-              </Link>
-              .
-            </p>
-          </div>
-        ) : (
-          <DevLoginButton autoLogin={false} />
-        )}
+        <ExtensionConnectPanel allowDevLogin={allowDevLogin} />
       </div>
     </div>
   );

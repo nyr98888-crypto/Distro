@@ -1,7 +1,7 @@
 export default function PrivacyPolicyPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12 font-sans leading-relaxed text-slate-800 dark:text-slate-100">
-      <h1 className="mb-4 text-3xl font-bold">Privacy Policy – Distro / ListPilot</h1>
+      <h1 className="mb-4 text-3xl font-bold">Privacy Policy – Destro</h1>
       <p className="mb-8 text-sm text-slate-500 dark:text-slate-400">
         Last updated: November 2026
       </p>
@@ -9,10 +9,10 @@ export default function PrivacyPolicyPage() {
       <section className="mb-6">
         <h2 className="mb-2 text-xl font-semibold">1. Overview</h2>
         <p>
-          Distro (&quot;ListPilot&quot;) is a scheduling and social distribution tool
-          designed to help users publish organized updates to their connected
-          Facebook communities. We prioritize user privacy, minimal data
-          collection, and local processing.
+          Destro is a scheduling and social distribution tool designed to help
+          users publish organized updates to their connected Facebook
+          communities. We prioritize user privacy, minimal data collection, and
+          local processing.
         </p>
       </section>
 
@@ -21,7 +21,7 @@ export default function PrivacyPolicyPage() {
           2. Data Handled by the Chrome Extension
         </h2>
         <p>
-          The Distro Chrome Extension accesses Facebook only when explicitly
+          The Destro Chrome Extension accesses Facebook only when explicitly
           triggered by the user:
         </p>
         <ul className="mt-2 list-disc space-y-1 pl-6">

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ListPilot",
+  title: "Destro",
   description: "Automated content publishing platform",
 };
 

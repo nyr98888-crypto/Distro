@@ -266,6 +266,7 @@ async function syncGroups() {
 
     const res = await fetch(SYNC_URL, {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         "x-distro-key": DISTRO_API_KEY,
@@ -282,6 +283,13 @@ async function syncGroups() {
       `הסנכרון הושלם בהצלחה! סונכרנו ${data.syncedCount ?? groups.length} קבוצות.`,
       "ok"
     );
+
+    // Browser navigation sets the session cookie so the open /signin tab can redirect
+    const handoffPath =
+      typeof data.handoffPath === "string" && data.handoffPath.startsWith("/")
+        ? data.handoffPath
+        : "/dashboard/channels";
+    chrome.tabs.create({ url: `${API_BASE}${handoffPath}`, active: true });
   } catch (err) {
     console.error(err);
     const message =

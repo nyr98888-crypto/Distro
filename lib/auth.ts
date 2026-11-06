@@ -1,5 +1,11 @@
 import { cookies } from "next/headers";
+import type { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+
+/** Session cookie set by auth / extension sync. */
+export const SESSION_COOKIE_NAME = "listpilot_user_id";
+
+const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
 
 /**
  * Lightweight session helper for API routes.
@@ -8,7 +14,7 @@ import { prisma } from "@/lib/prisma";
  */
 export async function getAuthenticatedUserId(): Promise<string | null> {
   const cookieStore = await cookies();
-  const userId = cookieStore.get("listpilot_user_id")?.value;
+  const userId = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
   if (!userId) {
     return null;
@@ -28,6 +34,16 @@ export async function requireAuth(): Promise<string> {
     throw new AuthError("Unauthorized");
   }
   return userId;
+}
+
+export function setSessionCookie(res: NextResponse, userId: string): void {
+  res.cookies.set(SESSION_COOKIE_NAME, userId, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_MAX_AGE,
+    secure: process.env.NODE_ENV === "production",
+  });
 }
 
 export class AuthError extends Error {

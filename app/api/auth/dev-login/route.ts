@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import { setSessionCookie } from "@/lib/auth";
 import { ensureDemoWorkspace } from "@/lib/demo-workspace";
-
-const COOKIE_NAME = "listpilot_user_id";
 
 /**
  * POST /api/auth/dev-login
  * Ensures demo User + ConnectedAccount + sample channels exist,
  * then sets the session cookie.
  *
- * Hard-blocked in production. Local/dev only.
+ * Available in non-production, or when ALLOW_DEV_LOGIN=true.
  */
 export async function POST(request: NextRequest) {
-  if (process.env.NODE_ENV === "production") {
+  const allowDevLogin =
+    process.env.NODE_ENV !== "production" ||
+    process.env.ALLOW_DEV_LOGIN === "true";
+
+  if (!allowDevLogin) {
     return NextResponse.json(
       { success: false, error: "Dev login is disabled in production" },
       { status: 403 }
@@ -32,12 +35,7 @@ export async function POST(request: NextRequest) {
       redirectTo,
     });
 
-    res.cookies.set(COOKIE_NAME, workspace.userId, {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-    });
+    setSessionCookie(res, workspace.userId);
 
     return res;
   } catch (error) {

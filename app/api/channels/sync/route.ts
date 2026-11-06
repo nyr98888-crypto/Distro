@@ -1,8 +1,14 @@
+import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { AuthError, getAuthenticatedUserId } from "@/lib/auth";
+import {
+  AuthError,
+  getAuthenticatedUserId,
+  setSessionCookie,
+} from "@/lib/auth";
 import { encryptSession } from "@/lib/crypto";
 import { ensureDemoWorkspace } from "@/lib/demo-workspace";
+import { createHandoffToken } from "@/lib/extension-handoff";
 import { prisma } from "@/lib/prisma";
 
 const groupSchema = z.object({
@@ -52,20 +58,43 @@ function assertDistroApiKey(request: NextRequest): NextResponse | null {
   return null;
 }
 
+function hashPassword(plain: string): string {
+  return createHash("sha256").update(plain).digest("hex");
+}
+
 /**
- * Resolve the active ListPilot user for extension sync.
- * Prefers the session cookie; in non-production may fall back to demo workspace.
+ * Resolve the active Destro user for extension sync.
+ * Prefers the session cookie; otherwise finds/creates a user from Facebook id
+ * so the sign-in page can pick up the session after sync.
  */
-async function resolveUserId(): Promise<string> {
+async function resolveUserId(
+  fbUserId: string,
+  fbUserName: string
+): Promise<string> {
   const existing = await getAuthenticatedUserId();
   if (existing) return existing;
+
+  const linked = await prisma.connectedAccount.findFirst({
+    where: { platformName: PLATFORM, identifier: fbUserId },
+    select: { userId: true },
+  });
+  if (linked) return linked.userId;
 
   if (process.env.NODE_ENV !== "production") {
     const demo = await ensureDemoWorkspace();
     return demo.userId;
   }
 
-  throw new AuthError("Unauthorized");
+  const email = `fb_${fbUserId}@destro.app`;
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: {},
+    create: {
+      email,
+      passwordHash: hashPassword(`ext-${fbUserId}-${fbUserName}`),
+    },
+  });
+  return user.id;
 }
 
 /**
@@ -80,8 +109,6 @@ export async function POST(request: NextRequest) {
   if (authError) return authError;
 
   try {
-    const userId = await resolveUserId();
-
     let body: unknown;
     try {
       body = await request.json();
@@ -106,6 +133,7 @@ export async function POST(request: NextRequest) {
 
     const { fbUserId, fbUserName, groups, cookies, sessionCredentials } =
       parsed.data;
+    const userId = await resolveUserId(fbUserId, fbUserName);
     const now = new Date();
 
     const plaintextCredentials =
@@ -195,12 +223,18 @@ export async function POST(request: NextRequest) {
       syncedCount += 1;
     }
 
-    return NextResponse.json({
+    const handoffToken = createHandoffToken(userId);
+    const res = NextResponse.json({
       success: true,
       syncedCount,
       accountId: account.id,
       platform: PLATFORM,
+      redirectTo: "/dashboard/channels",
+      handoffToken,
+      handoffPath: `/api/auth/extension-handoff?token=${encodeURIComponent(handoffToken)}`,
     });
+    setSessionCookie(res, userId);
+    return res;
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json(

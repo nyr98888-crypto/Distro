@@ -12,9 +12,11 @@ export const dynamic = "force-dynamic";
 
 export default async function ChannelsPage() {
   const userId = await getAuthenticatedUserId();
-  const isProd = process.env.NODE_ENV === "production";
+  const allowDevLogin =
+    process.env.NODE_ENV !== "production" ||
+    process.env.ALLOW_DEV_LOGIN === "true";
 
-  if (!userId && isProd) {
+  if (!userId && !allowDevLogin) {
     redirect("/signin");
   }
 
@@ -29,7 +31,6 @@ export default async function ChannelsPage() {
   }
 
   const needsLogin = !userId || !accountId;
-  const allowDevLogin = !isProd;
 
   return (
     <div className="space-y-6">
