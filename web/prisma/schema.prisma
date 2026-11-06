@@ -1,0 +1,74 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+model User {
+  id           String             @id @default(uuid())
+  email        String             @unique
+  passwordHash String
+  accounts     ConnectedAccount[]
+  campaigns    Campaign[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+}
+
+model ConnectedAccount {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platformName String   @default("facebook")
+  identifier   String
+  /// AES-256-GCM encrypted Facebook cookies / access tokens (at rest)
+  accessToken  String   @default("")
+  status       String   @default("ACTIVE")
+  lastSyncedAt DateTime @default(now())
+  channels     Channel[]
+  jobs         PublishJob[]
+}
+
+model Channel {
+  id                 String           @id @default(uuid())
+  accountId          String
+  account            ConnectedAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  externalId         String
+  name               String
+  memberCount        Int              @default(0)
+  categoryTags       String           @default("[]")
+  isApprovalRequired Boolean          @default(false)
+  isActive           Boolean          @default(true)
+  jobs               PublishJob[]
+}
+
+model Campaign {
+  id         String       @id @default(uuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  rawContent String
+  mediaUrls  String       @default("[]")
+  status     String       @default("DRAFT")
+  createdAt  DateTime     @default(now())
+  jobs       PublishJob[]
+}
+
+model PublishJob {
+  id            String           @id @default(uuid())
+  campaignId    String
+  campaign      Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  channelId     String
+  channel       Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  accountId     String
+  account       ConnectedAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  scheduledFor  DateTime         @default(now())
+  executedAt    DateTime?
+  status        String           @default("PENDING")
+  postResultUrl String?
+  errorMessage  String?
+  priority      Int              @default(5)
+}
