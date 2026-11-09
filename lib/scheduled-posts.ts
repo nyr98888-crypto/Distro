@@ -74,6 +74,8 @@ export type ScheduledPostRow = {
   isActive: boolean;
   nextRunAt: Date | null;
   executionMode?: string;
+  accountId?: string | null;
+  whatsappJson?: string | null;
   createdAt: Date;
   updatedAt: Date;
   publishedPosts?: Array<{

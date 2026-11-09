@@ -43,6 +43,8 @@ export function campaignToWorkerPayload(row: ScheduledPostRow) {
     }
   })();
   return {
+    // Extension-compatible shape (DTO first; worker fields override below)
+    ...dto,
     id: dto.id,
     account_id: row.accountId || null,
     name: dto.name,
@@ -59,8 +61,6 @@ export function campaignToWorkerPayload(row: ScheduledPostRow) {
     delay_seconds: dto.delaySeconds,
     created_at: dto.createdAt,
     next_run_at: dto.nextRunAt,
-    // Extension-compatible shape
-    ...dto,
   };
 }
 

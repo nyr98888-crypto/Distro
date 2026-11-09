@@ -38,16 +38,23 @@ export function toChannelDTO(row: {
   accountId: string;
   externalId: string;
   name: string;
+  url?: string | null;
   memberCount: number;
   categoryTags: string;
   isApprovalRequired: boolean;
   isActive: boolean;
 }): ChannelDTO {
+  const url =
+    (row.url && String(row.url).trim()) ||
+    (row.externalId
+      ? `https://www.facebook.com/groups/${row.externalId}`
+      : "");
   return {
     id: row.id,
     accountId: row.accountId,
     externalId: row.externalId,
     name: row.name,
+    url,
     memberCount: row.memberCount,
     categoryTags: parseStringArray(row.categoryTags),
     isApprovalRequired: row.isApprovalRequired,
