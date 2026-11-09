@@ -16,6 +16,7 @@ import { ExtensionInstallButton } from "@/components/dashboard/extension-install
 import { FacebookAccountBar } from "@/components/dashboard/facebook-account-bar";
 import { SidebarHeader } from "@/components/dashboard/sidebar-header";
 import { I18nProvider, LanguageToggle, useI18n } from "@/lib/i18n";
+import { supportHref } from "@/lib/support";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -69,6 +70,7 @@ function ShellInner({
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const { dir, locale, t } = useI18n();
   const isRtl = dir === "rtl";
+  const support = supportHref(locale);
 
   React.useEffect(() => {
     setMobileOpen(false);
@@ -143,10 +145,12 @@ function ShellInner({
         )}
         <ExtensionInstallButton />
         <a
-          href="mailto:support@distro.app"
+          href={support}
+          target={support.startsWith("http") ? "_blank" : undefined}
+          rel={support.startsWith("http") ? "noopener noreferrer" : undefined}
           className="block text-[11px] text-slate-400 hover:text-[#2563EB]"
         >
-          support@distro.app
+          {t("support")}
         </a>
       </div>
     </aside>

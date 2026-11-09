@@ -90,6 +90,58 @@ const dictionary = {
     helperExecution:
       "מומלץ להריץ דרך התוסף במחשב שלכם — בטוח יותר ופרטי יותר",
     loading: "טוען…",
+    landingNavSupport: "תמיכה",
+    landingNavPrivacy: "מדיניות פרטיות",
+    landingNavSignIn: "כניסה למערכת",
+    landingHeroTitle: "ניהול ופרסום קמפיינים חכם לקבוצות פייסבוק",
+    landingHeroSubtitle:
+      "סנכרן את כל הקבוצות שלך ללוח בקרה אחד. תזמן ופרסם פוסטים בלחיצה אחת ישירות מהמחשב או הנייד - ללא שרתים, ובאבטחה מלאה לחשבון שלך.",
+    landingCtaStart: "התחל עכשיו בחינם",
+    landingCtaPrivacy: "מדיניות פרטיות ואבטחה",
+    landingFeature1Title: "סנכרון קבוצות מקומי",
+    landingFeature1Body:
+      "התוסף מזהה אוטומטית את הקבוצות שאתה חבר בהן בלחיצה אחת.",
+    landingFeature2Title: "תזמון ופרסום חכם",
+    landingFeature2Body:
+      "צור פוסטים עם תמונות וקישורי וואטסאפ מותאמים, ותזמן אותם מראש.",
+    landingFeature3Title: "הגנה מלאה על החשבון",
+    landingFeature3Body:
+      "הפרסום מתבצע ישירות מהדפדפן שלך עם השהיות הגנה (Anti-Ban). שום סיסמה לא נשלחת לשרת חיצוני.",
+    loginTitle: "התחברות ל-DISTRO",
+    loginSubtitle: "התחבר לחשבון שלך או סנכרן עם תוסף הכרום",
+    loginEmail: "כתובת אימייל",
+    loginPassword: "סיסמה",
+    loginSubmit: "התחברות",
+    loginOr: "או",
+    loginFailed: "ההתחברות נכשלה",
+    installTitle: "התקנת תוסף DISTRO",
+    installSubtitle:
+      "התקינו את התוסף מחנות Chrome, סנכרנו קבוצות — והעמוד יעביר אתכם אוטומטית ללוח הבקרה.",
+    installWebStore: "התקן מ-Chrome Web Store בלחיצה אחת",
+    installAfterTitle: "אחרי ההתקנה",
+    installAfterBody:
+      "פתחו את פייסבוק, לחצו על אייקון DISTRO בסרגל התוספים, ולחצו על סנכרון קבוצות.",
+    privacyLastUpdated: "עודכן לאחרונה: נובמבר 2026",
+    privacyIntro:
+      'DISTRO ("אנחנו", "שלנו" או "התוסף") נבנה במודל פרטיות מקומי־קודם (local-first).',
+    privacyS1: "1. מידע שאנחנו ניגשים אליו",
+    privacyS1a: "מצב סשן פייסבוק פעיל לאימות התחברות.",
+    privacyS1b: "מטא־דאטה של קבוצות (שמות ומזהים של קבוצות שהמשתמש חבר בהן).",
+    privacyS1c: "תוכן פוסטים, תמונות ותזמונים שהמשתמש מספק ישירות.",
+    privacyS2: "2. כיצד המידע בשימוש",
+    privacyS2Body:
+      "כל הטיפול בנתונים, האינטראקציות עם פייסבוק והפרסום האוטומטי מתבצעים בסביבת הדפדפן המקומית של המשתמש. אנחנו לא מפעילים מנועי סקרייפינג חיצוניים.",
+    privacyS3: "3. העברת מידע ושיתוף עם צד שלישי",
+    privacyS3a:
+      "אנחנו לא מעבירים, שומרים, מוכרים או מממשים סיסמאות, עוגיות או נתוני חשבון פייסבוק אישיים לשרתי צד שלישי.",
+    privacyS3b:
+      "נתוני קמפיינים ותזמונים נשמרים במסדי נתונים מאובטחים רק כדי לספק את פונקציונליות הקמפיין לבעל החשבון המאומת.",
+    privacyS4: "4. שליטת המשתמש",
+    privacyS4Body:
+      "ניתן לנתק את פרופיל הפייסבוק, למחוק קמפיינים מתוזמנים או להסיר את התוסף בכל עת כדי למחוק מצב מקומי.",
+    privacyS5: "5. יצירת קשר",
+    privacyContact: "לפניות:",
+    privacyBackHome: "חזרה לדף הבית",
   },
   en: {
     brandTagline: "Group distribution made simple",
@@ -174,6 +226,60 @@ const dictionary = {
     helperExecution:
       "Recommended: run via the Chrome extension on your computer — safer and more private",
     loading: "Loading…",
+    landingNavSupport: "Support",
+    landingNavPrivacy: "Privacy Policy",
+    landingNavSignIn: "Sign In",
+    landingHeroTitle: "Smart campaign management for Facebook Groups",
+    landingHeroSubtitle:
+      "Sync all your groups into one dashboard. Schedule and publish posts in one click from desktop or mobile — no external publishing servers, with full account security.",
+    landingCtaStart: "Start free now",
+    landingCtaPrivacy: "Privacy & Security Policy",
+    landingFeature1Title: "Local group sync",
+    landingFeature1Body:
+      "The extension automatically detects the Facebook groups you belong to — in one click.",
+    landingFeature2Title: "Smart scheduling & publishing",
+    landingFeature2Body:
+      "Create posts with images and tailored WhatsApp links, then schedule them ahead of time.",
+    landingFeature3Title: "Full account protection",
+    landingFeature3Body:
+      "Publishing runs directly in your browser with anti-ban delays. No password is ever sent to an external server.",
+    loginTitle: "Sign in to DISTRO",
+    loginSubtitle: "Sign in to your account or sync with the Chrome extension",
+    loginEmail: "Email address",
+    loginPassword: "Password",
+    loginSubmit: "Sign in",
+    loginOr: "or",
+    loginFailed: "Sign-in failed",
+    installTitle: "Install the DISTRO extension",
+    installSubtitle:
+      "Install from the Chrome Web Store, sync your groups — and this page will take you to the dashboard automatically.",
+    installWebStore: "Install from Chrome Web Store in one click",
+    installAfterTitle: "After installing",
+    installAfterBody:
+      "Open Facebook, click the DISTRO icon in the extensions toolbar, then Sync Groups.",
+    privacyLastUpdated: "Last updated: November 2026",
+    privacyIntro:
+      'DISTRO ("we", "our", or "the extension") is designed with a strict local-first privacy model.',
+    privacyS1: "1. Information We Access",
+    privacyS1a: "Active Facebook session state to verify authentication.",
+    privacyS1b:
+      "Group metadata (names and IDs of groups the user has joined).",
+    privacyS1c:
+      "Post content, images, and schedules provided directly by the user.",
+    privacyS2: "2. How Information is Used",
+    privacyS2Body:
+      "All data handling, Facebook interactions, and automated publishing execute strictly within the user's local browser environment. We do not operate external scraping engines.",
+    privacyS3: "3. Data Transmission & Third-Party Sharing",
+    privacyS3a:
+      "We DO NOT transmit, store, sell, or monetize user login credentials, cookies, or personal Facebook account data to any third-party servers.",
+    privacyS3b:
+      "Campaign data and schedules are kept on secure local databases strictly to provide campaign functionality to the authenticated account owner.",
+    privacyS4: "4. User Control",
+    privacyS4Body:
+      "Users can disconnect their Facebook profile, delete scheduled campaigns, or uninstall the extension at any time to purge all local state.",
+    privacyS5: "5. Contact",
+    privacyContact: "For inquiries:",
+    privacyBackHome: "Back to home",
   },
 } as const;
 
@@ -266,28 +372,31 @@ export function LanguageToggle({ className }: { className?: string }) {
   const { locale, setLocale } = useI18n();
   return (
     <div
-      className={`inline-flex items-center rounded-full border border-slate-200 bg-white p-0.5 text-xs font-semibold shadow-sm ${className || ""}`}
+      className={`inline-flex items-center gap-1 rounded-md border border-slate-200/80 bg-white/80 px-2 py-1 text-[11px] font-medium text-slate-500 shadow-sm backdrop-blur ${className || ""}`}
       role="group"
       aria-label="Language"
     >
       <button
         type="button"
         onClick={() => setLocale("he")}
-        className={`rounded-full px-3 py-1.5 transition ${
+        className={`rounded px-1.5 py-0.5 transition ${
           locale === "he"
-            ? "bg-[#2563EB] text-white shadow-sm"
-            : "text-slate-500 hover:text-slate-800"
+            ? "bg-slate-900 text-white"
+            : "hover:text-slate-800"
         }`}
       >
         עברית
       </button>
+      <span aria-hidden className="text-slate-300">
+        |
+      </span>
       <button
         type="button"
         onClick={() => setLocale("en")}
-        className={`rounded-full px-3 py-1.5 transition ${
+        className={`rounded px-1.5 py-0.5 transition ${
           locale === "en"
-            ? "bg-[#2563EB] text-white shadow-sm"
-            : "text-slate-500 hover:text-slate-800"
+            ? "bg-slate-900 text-white"
+            : "hover:text-slate-800"
         }`}
       >
         English

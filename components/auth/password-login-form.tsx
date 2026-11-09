@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, LogIn } from "lucide-react";
 import { pushAuthToExtension } from "@/components/auth/extension-auth-bridge";
+import { useI18n } from "@/lib/i18n";
 
 type PasswordLoginFormProps = {
   className?: string;
@@ -11,6 +12,7 @@ type PasswordLoginFormProps = {
 
 export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
   const router = useRouter();
+  const { dir, t } = useI18n();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [pending, setPending] = React.useState(false);
@@ -34,7 +36,7 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
         redirectTo?: string;
       };
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Sign-in failed");
+        throw new Error(data.error || t("loginFailed"));
       }
       if (data.extensionToken) {
         pushAuthToExtension(data.extensionToken);
@@ -42,7 +44,7 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
       router.replace(data.redirectTo || "/dashboard/channels");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
+      setError(err instanceof Error ? err.message : t("loginFailed"));
     } finally {
       setPending(false);
     }
@@ -52,11 +54,11 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
     <form
       onSubmit={(e) => void onSubmit(e)}
       className={className ?? "space-y-3"}
-      dir="ltr"
+      dir={dir}
     >
-      <div className="space-y-1">
+      <div className="space-y-1 text-start">
         <label htmlFor="login-email" className="text-sm font-medium">
-          Email
+          {t("loginEmail")}
         </label>
         <input
           id="login-email"
@@ -65,13 +67,14 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          dir="ltr"
           className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
           placeholder="you@example.com"
         />
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1 text-start">
         <label htmlFor="login-password" className="text-sm font-medium">
-          Password
+          {t("loginPassword")}
         </label>
         <input
           id="login-password"
@@ -80,6 +83,7 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          dir="ltr"
           className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
           placeholder="••••••••"
         />
@@ -99,7 +103,7 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
         ) : (
           <LogIn className="size-4" aria-hidden />
         )}
-        Sign in
+        {t("loginSubmit")}
       </button>
     </form>
   );

@@ -5,6 +5,7 @@ import { CheckCircle2, RefreshCw, Shield, ScrollText, Sparkles } from "lucide-re
 import { ExtensionInstallButton } from "@/components/dashboard/extension-install-button";
 import { FacebookAccountBar } from "@/components/dashboard/facebook-account-bar";
 import { useI18n } from "@/lib/i18n";
+import { SUPPORT_EMAIL, supportHref } from "@/lib/support";
 import { cn } from "@/lib/utils";
 
 type Tab = "privacy" | "terms" | "about";
@@ -13,6 +14,7 @@ const APP_VERSION = "v1.0.0 Beta";
 
 export function SettingsPanel() {
   const { t, dir, locale } = useI18n();
+  const support = supportHref(locale);
   const [tab, setTab] = React.useState<Tab>("privacy");
   const [checking, setChecking] = React.useState(false);
   const [updateMsg, setUpdateMsg] = React.useState<string | null>(null);
@@ -112,7 +114,7 @@ export function SettingsPanel() {
                   </ul>
                   <p>
                     לשאלות או בקשות מחיקת נתונים:{" "}
-                    <a href="mailto:support@distro.app">support@distro.app</a>
+                    <a href={support}>{SUPPORT_EMAIL}</a>
                   </p>
                 </>
               ) : (
@@ -144,7 +146,7 @@ export function SettingsPanel() {
                   </ul>
                   <p>
                     Questions or data deletion requests:{" "}
-                    <a href="mailto:support@distro.app">support@distro.app</a>
+                    <a href={support}>{SUPPORT_EMAIL}</a>
                   </p>
                 </>
               )}
@@ -258,10 +260,14 @@ export function SettingsPanel() {
                   {checking ? t("checkingUpdates") : t("checkUpdates")}
                 </button>
                 <a
-                  href="mailto:support@distro.app"
+                  href={support}
+                  target={support.startsWith("http") ? "_blank" : undefined}
+                  rel={
+                    support.startsWith("http") ? "noopener noreferrer" : undefined
+                  }
                   className="text-sm font-semibold text-[#2563EB] hover:underline"
                 >
-                  {t("support")}: support@distro.app
+                  {t("support")}: {SUPPORT_EMAIL}
                 </a>
               </div>
               {updateMsg && (

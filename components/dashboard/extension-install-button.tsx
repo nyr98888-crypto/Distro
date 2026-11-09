@@ -1,27 +1,42 @@
 "use client";
 
 import * as React from "react";
-import { Download, Puzzle, X } from "lucide-react";
+import { Puzzle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n";
+import { CHROME_WEB_STORE_URL } from "@/lib/support";
 
-const STEPS = [
-  {
-    title: "הורידו וחלצו",
-    body: "לחצו על כפתור ההורדה למטה, ואז חלצו (Extract) את קובץ ה-ZIP לתיקייה קבועה במחשב.",
-  },
-  {
-    title: "טענו כתוסף לא ארוז",
-    body: "chrome://extensions",
-    isChromeUrl: true,
-  },
-  {
-    title: "סנכרנו קבוצות",
-    body: "פתחו את פייסבוק, לחצו על אייקון Distro בסרגל התוספים, ולחצו Sync Groups — הקבוצות יופיעו בדשבורד.",
-  },
-] as const;
+function ChromeStoreIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      aria-hidden
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <circle cx="12" cy="12" r="10" fill="#4285F4" />
+      <path
+        d="M12 2a10 10 0 0 1 8.66 5H12v4.5L7.34 7A10 10 0 0 1 12 2Z"
+        fill="#EA4335"
+      />
+      <path
+        d="M3.34 7A10 10 0 0 0 12 22l4.66-8.07H7.34L3.34 7Z"
+        fill="#FBBC05"
+      />
+      <path
+        d="M12 22a10 10 0 0 0 8.66-15H12v5.93L16.66 13.93 12 22Z"
+        fill="#34A853"
+      />
+      <circle cx="12" cy="12" r="4.25" fill="#fff" />
+      <circle cx="12" cy="12" r="2.6" fill="#4285F4" />
+    </svg>
+  );
+}
 
 export function ExtensionInstallButton() {
   const [open, setOpen] = React.useState(false);
+  const { dir, t } = useI18n();
 
   React.useEffect(() => {
     if (!open) return;
@@ -47,8 +62,8 @@ export function ExtensionInstallButton() {
         onClick={() => setOpen(true)}
       >
         <Puzzle className="size-4" />
-        <span className="hidden sm:inline">התקנת תוסף כרום לסנכרון</span>
-        <span className="sm:hidden">התקנת תוסף</span>
+        <span className="hidden sm:inline">{t("installTitle")}</span>
+        <span className="sm:hidden">{t("installTitle")}</span>
       </Button>
 
       {open && (
@@ -61,21 +76,24 @@ export function ExtensionInstallButton() {
           <button
             type="button"
             className="absolute inset-0 bg-black/50"
-            aria-label="סגור"
+            aria-label={t("close")}
             onClick={() => setOpen(false)}
           />
 
-          <div className="relative z-10 w-full max-w-lg rounded-xl border border-border bg-white p-5 text-right shadow-xl sm:p-6">
+          <div
+            dir={dir}
+            className="relative z-10 w-full max-w-lg rounded-xl border border-border bg-white p-5 text-start shadow-xl sm:p-6"
+          >
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h2
                   id="extension-install-title"
                   className="text-lg font-semibold text-slate-900"
                 >
-                  התקנת תוסף Distro
+                  {t("installTitle")}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  לפני פרסום ב-Chrome Web Store — התקינו מקומית ב־3 שלבים.
+                  {t("installSubtitle")}
                 </p>
               </div>
               <Button
@@ -83,53 +101,28 @@ export function ExtensionInstallButton() {
                 size="icon"
                 variant="ghost"
                 onClick={() => setOpen(false)}
-                aria-label="סגור"
+                aria-label={t("close")}
               >
                 <X className="size-4" />
               </Button>
             </div>
 
             <a
-              href="/distro-extension.zip"
-              download="distro-extension.zip"
-              className="mb-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#1877f2] px-4 text-sm font-medium text-white shadow transition-colors hover:bg-[#166fe5]"
+              href={CHROME_WEB_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-[#4285F4] px-4 text-sm font-semibold text-white shadow transition-colors hover:bg-[#3367D6]"
             >
-              <Download className="size-4" />
-              הורד תוסף Distro (ZIP)
+              <ChromeStoreIcon className="size-5" />
+              {t("installWebStore")}
             </a>
 
-            <ol className="space-y-4">
-              {STEPS.map((step, index) => (
-                <li key={step.title} className="flex gap-3 text-sm leading-relaxed">
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-900">
-                    {index + 1}
-                  </span>
-                  <div className="pt-0.5">
-                    <p className="font-semibold text-slate-900">{step.title}</p>
-                    {"isChromeUrl" in step && step.isChromeUrl ? (
-                      <p className="mt-1 text-slate-600">
-                        פתחו{" "}
-                        <code
-                          dir="ltr"
-                          className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800"
-                        >
-                          chrome://extensions
-                        </code>
-                        , הפעילו Developer mode, לחצו Load unpacked ובחרו את
-                        התיקייה שחילצתם.
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-slate-600">{step.body}</p>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ol>
-
-            <p className="mt-5 text-xs leading-relaxed text-slate-500">
-              באנדרואיד אפשר להריץ את אותו תוסף דרך Kiwi Browser או Lemur Browser
-              מ־Google Play. ב־iOS אין תמיכה בתוספי כרום.
-            </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">
+                {t("installAfterTitle")}
+              </p>
+              <p className="mt-1 leading-relaxed">{t("installAfterBody")}</p>
+            </div>
           </div>
         </div>
       )}
