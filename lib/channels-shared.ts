@@ -5,6 +5,7 @@ export type ChannelDTO = {
   accountId: string;
   externalId: string;
   name: string;
+  url: string;
   memberCount: number;
   categoryTags: string[];
   isApprovalRequired: boolean;

@@ -6,13 +6,24 @@ import { stringifyStringArray } from "@/lib/json-fields";
 import { prisma } from "@/lib/prisma";
 import { schedulePublishCampaign } from "@/lib/queue";
 
+const mediaUrlSchema = z
+  .string()
+  .refine(
+    (value) =>
+      value.startsWith("data:image/") ||
+      /^https?:\/\//i.test(value),
+    { message: "Invalid media URL" }
+  );
+
 const createCampaignSchema = z.object({
   name: z.string().min(1).max(200),
   rawContent: z.string().min(1),
-  mediaUrls: z.array(z.string().url()).optional().default([]),
+  mediaUrls: z.array(mediaUrlSchema).optional().default([]),
   channelIds: z.array(z.string().uuid()).min(1),
   /** ISO datetime — enables flash priority when within 3 hours */
   eventTime: z.string().datetime({ offset: true }).optional().nullable(),
+  /** Seconds between group posts when the extension executor runs */
+  intervalDelay: z.number().int().min(0).max(3600).optional().default(60),
   /** When true, create PublishJobs and enqueue immediately */
   schedule: z.boolean().optional().default(true),
 });

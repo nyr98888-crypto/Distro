@@ -1,0 +1,27 @@
+{
+  "name": "DISTRO",
+  "short_name": "DISTRO",
+  "description": "Schedule and publish posts across your Facebook groups from iPhone or desktop.",
+  "start_url": "/dashboard/campaigns",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563EB",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

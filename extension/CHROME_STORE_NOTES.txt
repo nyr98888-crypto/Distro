@@ -1,0 +1,125 @@
+================================================================================
+DISTRO — Chrome Web Store submission pack (pass in one go)
+Production domain: https://distro-auu6.vercel.app
+Privacy policy URL: https://distro-auu6.vercel.app/privacy
+Support email: support@distro.app
+Visibility: Unlisted
+Category: Productivity / Workflow & Planning
+Primary language: English
+================================================================================
+
+--------------------------------------------------------------------------------
+0) WHATSAPP BETA INVITE (copy-paste)
+--------------------------------------------------------------------------------
+היי [שם]! 🚀
+פיתחנו כלי חדש בשם DISTRO שמאפשר לפרסם ולתזמן פוסטים בכל קבוצות הפייסבוק שלך בלחיצה אחת, ישירות מהמחשב או הנייד.
+כדי להתחיל ב-30 שניות:
+1. לחץ כאן להתקנה מהירה מחנות כרום: [לינק לחנות של גוגל]
+2. לחץ על הכפתור הכחול "הוסף ל-Chrome".
+3. המערכת תיפתח מעצמה, תסנכרן את הקבוצות שלך ותוכל לתזמן פוסט ראשון.
+אשמח שתנסה לתזמן פוסט ניסיון אחד ותגיד לי איך הרגיש לך!
+
+--------------------------------------------------------------------------------
+1) STORE LISTING (English — recommended for US reviewer speed)
+--------------------------------------------------------------------------------
+Item title:
+DISTRO - Smart Group Campaign Manager
+
+Short description (≤132 chars):
+Schedule and broadcast your marketing posts across joined Facebook groups from one simple dashboard.
+
+Detailed description:
+DISTRO is a local-first marketing workflow for community managers and small businesses.
+
+Draft once, choose your Facebook groups, and schedule posts from your browser — on desktop or via the mobile dashboard. Publishing runs through your own Chrome session on your computer. DISTRO never asks for your Facebook password.
+
+KEY FEATURES:
+• Sync joined Facebook groups into your DISTRO dashboard
+• Create campaigns with text, images, and optional WhatsApp CTA
+• Schedule immediate, one-time, or recurring posts
+• Run publishing locally via the Chrome extension with safety delays
+• Switch Facebook profiles on a shared computer without retyping passwords
+
+HOW TO USE:
+1. Install DISTRO and open https://distro-auu6.vercel.app
+2. Sign in, then open Facebook and sync your groups
+3. Create a campaign, pick groups, and schedule — the extension handles posting
+
+Privacy policy:
+https://distro-auu6.vercel.app/privacy
+
+--------------------------------------------------------------------------------
+2) PRIVACY PRACTICES — paste into Developer Console
+--------------------------------------------------------------------------------
+Single Purpose Description:
+DISTRO provides a local marketing workflow that helps users manage and automate posting their own content across Facebook groups they manage or have joined.
+
+Permission Justification — cookies:
+Required solely to verify if the user has an active authenticated session on Facebook. This enables local group posting without prompting the user to re-enter sensitive account credentials or passwords inside the extension.
+
+Permission Justification — alarms:
+Required to schedule and wake the background service worker at user-defined campaign execution times, enabling reliable automated posting intervals without running constant background loops.
+
+Permission Justification — storage:
+Used exclusively to store user campaign preferences, group preset IDs, and UI configuration settings locally on the user's device.
+
+Permission Justification — tabs:
+Required to open or focus the user's Facebook tabs when syncing joined groups and when executing a user-scheduled campaign post sequence.
+
+Permission Justification — scripting:
+Required to inject the DISTRO content helper into Facebook pages so the extension can sync the joined-groups directory and fill the native Facebook post composer with the user's own campaign content.
+
+Permission Justification — notifications:
+Optional user-facing alerts when a scheduled campaign that was waiting while the computer was offline begins publishing after catch-up.
+
+Host Permissions Justification (*://*.facebook.com/*):
+Required to access the user's joined groups directory at https://www.facebook.com/groups/joins/ to sync group lists, and to interact with the Facebook group post composer to publish user-created marketing posts locally.
+
+Host Permissions Justification (https://distro-auu6.vercel.app/*):
+Required to communicate with the user's DISTRO dashboard API to sync group lists, receive queued campaigns (including jobs created from mobile), and report publish status. Localhost entries are for development only.
+
+Data usage checklist:
+- Collects user data? YES
+- Website content: group names / IDs (user-initiated sync)
+- Authentication: DISTRO session token only (not Facebook passwords)
+- Confirm Limited Use compliance
+- Confirm you do not sell/transfer data to third parties
+- Confirm you do not use data for ads or creditworthiness
+
+--------------------------------------------------------------------------------
+3) REVIEWER / TESTER INSTRUCTIONS
+--------------------------------------------------------------------------------
+1. Web Dashboard: https://distro-auu6.vercel.app/login
+2. Reviewer account:
+   - Email: reviewer@distro.app
+   - Password: ReviewerPass2026!
+
+Walkthrough:
+1. Sign in at the dashboard URL above.
+2. Open https://www.facebook.com/groups/joins/ while logged into Facebook.
+3. Click the DISTRO toolbar icon / Sync Groups.
+4. In the dashboard, create a campaign, select groups, schedule or publish.
+5. Confirm the extension posts using the active Facebook session.
+
+--------------------------------------------------------------------------------
+4) ASSET CHECKLIST
+--------------------------------------------------------------------------------
+[x] icons/icon16.png
+[x] icons/icon32.png
+[x] icons/icon48.png
+[x] icons/icon128.png
+[ ] Prefer a 128x128 store icon with transparent background (no solid black square border) before public listing
+[ ] Store screenshot 1280x800 or 640x400 — bright dashboard with sample campaigns
+[x] Privacy URL live: /privacy
+[x] No <all_urls> wildcards
+[x] Unlisted visibility recommended for beta
+
+ZIP root should contain:
+  manifest.json
+  background.js
+  content.js
+  web-bridge.js
+  composer.css
+  schedule-engine.js
+  popup.html / popup.js / popup.css (if bundled)
+  icons/*

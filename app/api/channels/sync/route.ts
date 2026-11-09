@@ -1,4 +1,3 @@
-import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
@@ -6,13 +5,15 @@ import {
   getAuthenticatedUserId,
   setSessionCookie,
 } from "@/lib/auth";
+import { applyCorsHeaders, corsJson, corsPreflight } from "@/lib/cors";
 import { encryptSession } from "@/lib/crypto";
-import { ensureDemoWorkspace } from "@/lib/demo-workspace";
 import { createHandoffToken } from "@/lib/extension-handoff";
+import { parseStoredSession } from "@/lib/facebook-accounts";
+import { hashPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
 
 const groupSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().regex(/^\d{5,}$/, "Group id must be numeric"),
   name: z.string().min(1),
   memberCount: z.number().int().nonnegative().optional(),
   url: z.string().url().optional().or(z.literal("")),
@@ -28,6 +29,7 @@ const cookieSchema = z.object({
 const syncChannelsSchema = z.object({
   fbUserId: z.string().min(1),
   fbUserName: z.string().min(1),
+  fbAvatarUrl: z.string().url().optional().or(z.literal("")),
   groups: z.array(groupSchema).min(1, "At least one group is required"),
   /** Optional Facebook session cookies / tokens to encrypt at rest */
   cookies: z.array(cookieSchema).optional(),
@@ -37,11 +39,35 @@ const syncChannelsSchema = z.object({
 const DEFAULT_TAGS = JSON.stringify(["פייסבוק", "אישי"]);
 const PLATFORM = "FACEBOOK";
 
+const GROUP_NAME_NOISE = [
+  /\s*פעילות אחרונה[\s\S]*$/i,
+  /\s*פוסטים חדשים(?:\s+היום)?[\s\S]*$/i,
+  /\s*Last active[\s\S]*$/i,
+  /\s*Active now[\s\S]*$/i,
+  /\s*New posts?(?:\s+today)?[\s\S]*$/i,
+  /\s*[\d.,]+\s*(?:K|k|M|m|אלף|מיליון)?\s*(?:members?|חברים)[\s\S]*$/i,
+  /\s*[·•|].*$/,
+];
+
+/** Strip FB activity / member metadata so re-sync cleans existing rows. */
+function sanitizeGroupName(raw: string): string {
+  let name = raw
+    .replace(/\u00a0/g, " ")
+    .replace(/[\u200e\u200f\u202a-\u202e]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  name = name.split(/\n/)[0]?.trim() ?? name;
+  for (const re of GROUP_NAME_NOISE) {
+    name = name.replace(re, "").trim();
+  }
+  return name || raw.trim();
+}
+
 function assertDistroApiKey(request: NextRequest): NextResponse | null {
   const expected = process.env.DISTRO_API_KEY;
   if (!expected) {
     console.error("[channels/sync] DISTRO_API_KEY is not configured");
-    return NextResponse.json(
+    return corsJson(
       { success: false, error: "Server misconfigured" },
       { status: 500 }
     );
@@ -49,7 +75,7 @@ function assertDistroApiKey(request: NextRequest): NextResponse | null {
 
   const provided = request.headers.get("x-distro-key");
   if (!provided || provided !== expected) {
-    return NextResponse.json(
+    return corsJson(
       { success: false, error: "Unauthorized" },
       { status: 401 }
     );
@@ -58,8 +84,8 @@ function assertDistroApiKey(request: NextRequest): NextResponse | null {
   return null;
 }
 
-function hashPassword(plain: string): string {
-  return createHash("sha256").update(plain).digest("hex");
+export async function OPTIONS() {
+  return corsPreflight();
 }
 
 /**
@@ -75,17 +101,16 @@ async function resolveUserId(
   if (existing) return existing;
 
   const linked = await prisma.connectedAccount.findFirst({
-    where: { platformName: PLATFORM, identifier: fbUserId },
+    where: {
+      platformName: { in: [PLATFORM, "facebook"] },
+      identifier: fbUserId,
+    },
     select: { userId: true },
   });
   if (linked) return linked.userId;
 
-  if (process.env.NODE_ENV !== "production") {
-    const demo = await ensureDemoWorkspace();
-    return demo.userId;
-  }
-
-  const email = `fb_${fbUserId}@destro.app`;
+  // Always bind sync to a real Facebook-derived user — never dump into demo mocks
+  const email = `fb_${fbUserId}@distro.app`;
   const user = await prisma.user.upsert({
     where: { email },
     update: {},
@@ -113,7 +138,7 @@ export async function POST(request: NextRequest) {
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
+      return corsJson(
         { success: false, error: "Invalid JSON body" },
         { status: 400 }
       );
@@ -121,7 +146,7 @@ export async function POST(request: NextRequest) {
 
     const parsed = syncChannelsSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json(
+      return corsJson(
         {
           success: false,
           error: "Validation failed",
@@ -131,44 +156,58 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { fbUserId, fbUserName, groups, cookies, sessionCredentials } =
-      parsed.data;
+    const {
+      fbUserId,
+      fbUserName,
+      fbAvatarUrl,
+      groups,
+      cookies,
+      sessionCredentials,
+    } = parsed.data;
     const userId = await resolveUserId(fbUserId, fbUserName);
     const now = new Date();
 
-    const plaintextCredentials =
-      sessionCredentials ??
-      (cookies && cookies.length > 0
-        ? JSON.stringify({
-            fbUserId,
-            fbUserName,
-            cookies,
-            source: "chrome-extension",
-            lastGroupSyncAt: now.toISOString(),
-          })
-        : JSON.stringify({
-            fbUserId,
-            fbUserName,
-            source: "chrome-extension",
-            lastGroupSyncAt: now.toISOString(),
-          }));
-
-    const accessToken = encryptSession(plaintextCredentials);
+    await prisma.connectedAccount.updateMany({
+      where: { userId },
+      data: { isActive: false },
+    });
 
     let account = await prisma.connectedAccount.findFirst({
       where: {
         userId,
-        platformName: PLATFORM,
         identifier: fbUserId,
       },
     });
+
+    // Preserve previously saved session cookies when this sync payload omits them
+    let cookiesToStore = cookies && cookies.length > 0 ? cookies : [];
+    if (!cookiesToStore.length && !sessionCredentials && account?.accessToken) {
+      const prev = parseStoredSession(account.accessToken);
+      if (prev.cookies?.length) cookiesToStore = prev.cookies;
+    }
+
+    const accessToken =
+      sessionCredentials ||
+      encryptSession(
+        JSON.stringify({
+          fbUserId,
+          fbUserName,
+          fbAvatarUrl: fbAvatarUrl || "",
+          cookies: cookiesToStore,
+          source: "chrome-extension",
+          lastGroupSyncAt: now.toISOString(),
+        })
+      );
 
     if (account) {
       account = await prisma.connectedAccount.update({
         where: { id: account.id },
         data: {
           accessToken,
+          displayName: fbUserName,
+          avatarUrl: fbAvatarUrl || account.avatarUrl || "",
           status: "ACTIVE",
+          isActive: true,
           lastSyncedAt: now,
           platformName: PLATFORM,
         },
@@ -179,17 +218,21 @@ export async function POST(request: NextRequest) {
           userId,
           platformName: PLATFORM,
           identifier: fbUserId,
+          displayName: fbUserName,
+          avatarUrl: fbAvatarUrl || "",
           accessToken,
           status: "ACTIVE",
+          isActive: true,
           lastSyncedAt: now,
         },
       });
     }
 
     let syncedCount = 0;
+    const syncedExternalIds: string[] = [];
 
     for (const group of groups) {
-      const memberCount = group.memberCount ?? 0;
+      const name = sanitizeGroupName(group.name);
       const existing = await prisma.channel.findFirst({
         where: {
           accountId: account.id,
@@ -197,11 +240,17 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // Prefer a newly scraped count; keep the previous value if scrape still missed it
+      const memberCount =
+        group.memberCount !== undefined && group.memberCount > 0
+          ? group.memberCount
+          : (existing?.memberCount ?? group.memberCount ?? 0);
+
       if (existing) {
         await prisma.channel.update({
           where: { id: existing.id },
           data: {
-            name: group.name,
+            name,
             memberCount,
             categoryTags: DEFAULT_TAGS,
             isActive: true,
@@ -212,7 +261,7 @@ export async function POST(request: NextRequest) {
           data: {
             accountId: account.id,
             externalId: group.id,
-            name: group.name,
+            name,
             memberCount,
             categoryTags: DEFAULT_TAGS,
             isActive: true,
@@ -220,30 +269,43 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      syncedExternalIds.push(group.id);
       syncedCount += 1;
     }
 
+    // Deactivate groups that disappeared from the full scroll scrape
+    if (syncedExternalIds.length > 0) {
+      await prisma.channel.updateMany({
+        where: {
+          accountId: account.id,
+          externalId: { notIn: syncedExternalIds },
+        },
+        data: { isActive: false },
+      });
+    }
+
     const handoffToken = createHandoffToken(userId);
-    const res = NextResponse.json({
+    const res = corsJson({
       success: true,
       syncedCount,
       accountId: account.id,
       platform: PLATFORM,
       redirectTo: "/dashboard/channels",
       handoffToken,
+      extensionToken: handoffToken,
       handoffPath: `/api/auth/extension-handoff?token=${encodeURIComponent(handoffToken)}`,
     });
     setSessionCookie(res, userId);
-    return res;
+    return applyCorsHeaders(res);
   } catch (error) {
     if (error instanceof AuthError) {
-      return NextResponse.json(
+      return corsJson(
         { success: false, error: "Unauthorized" },
         { status: 401 }
       );
     }
     console.error("[channels/sync]", error);
-    return NextResponse.json(
+    return corsJson(
       { success: false, error: "Internal server error" },
       { status: 500 }
     );

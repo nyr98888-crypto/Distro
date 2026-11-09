@@ -1,20 +1,34 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { verifyHandoffToken } from "@/lib/extension-handoff";
 
 /** Session cookie set by auth / extension sync. */
-export const SESSION_COOKIE_NAME = "listpilot_user_id";
+export const SESSION_COOKIE_NAME = "distro_user_id";
+/** Legacy cookie name — still accepted so existing sessions keep working. */
+const LEGACY_SESSION_COOKIE_NAME = "listpilot_user_id";
 
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
 
 /**
  * Lightweight session helper for API routes.
- * Expects a `listpilot_user_id` cookie set by the auth layer.
- * Replace with NextAuth / Clerk session lookup in production.
+ * Accepts the dashboard cookie or an Authorization Bearer extension token.
  */
 export async function getAuthenticatedUserId(): Promise<string | null> {
   const cookieStore = await cookies();
-  const userId = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  let userId =
+    cookieStore.get(SESSION_COOKIE_NAME)?.value ||
+    cookieStore.get(LEGACY_SESSION_COOKIE_NAME)?.value ||
+    null;
+
+  if (!userId) {
+    const headerStore = await headers();
+    const auth = headerStore.get("authorization") || "";
+    const match = /^Bearer\s+(.+)$/i.exec(auth);
+    if (match?.[1]) {
+      userId = verifyHandoffToken(match[1].trim());
+    }
+  }
 
   if (!userId) {
     return null;

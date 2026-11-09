@@ -3,12 +3,13 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * Lightweight session helper for API routes.
- * Expects a `listpilot_user_id` cookie set by the auth layer.
- * Replace with NextAuth / Clerk session lookup in production.
+ * Expects a `distro_user_id` cookie set by the auth layer.
  */
 export async function getAuthenticatedUserId(): Promise<string | null> {
   const cookieStore = await cookies();
-  const userId = cookieStore.get("listpilot_user_id")?.value;
+  const userId =
+    cookieStore.get("distro_user_id")?.value ||
+    cookieStore.get("listpilot_user_id")?.value;
 
   if (!userId) {
     return null;

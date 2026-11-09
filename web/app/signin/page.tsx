@@ -16,7 +16,7 @@ export default function SignInPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">התחברות</h1>
           <p className="text-sm text-muted-foreground">
-            יש להתחבר כדי לנהל קבוצות ולתזמן פוסטים ב־ListPilot.
+            יש להתחבר כדי לנהל קבוצות ולתזמן פוסטים ב־DISTRO.
           </p>
         </div>
 

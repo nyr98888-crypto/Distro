@@ -1,6 +1,11 @@
-import { NextResponse } from "next/server";
 import { getAuthenticatedUserId } from "@/lib/auth";
+import { corsJson, corsPreflight } from "@/lib/cors";
+import { createHandoffToken } from "@/lib/extension-handoff";
 import { prisma } from "@/lib/prisma";
+
+export async function OPTIONS() {
+  return corsPreflight();
+}
 
 /**
  * GET /api/auth/session
@@ -11,7 +16,7 @@ export async function GET() {
   try {
     const userId = await getAuthenticatedUserId();
     if (!userId) {
-      return NextResponse.json({
+      return corsJson({
         connected: false,
         authenticated: false,
         channelCount: 0,
@@ -31,15 +36,16 @@ export async function GET() {
     const channelCount = account?._count.channels ?? 0;
     const connected = Boolean(account && channelCount > 0);
 
-    return NextResponse.json({
+    return corsJson({
       connected,
       authenticated: true,
       channelCount,
       lastSyncedAt: account?.lastSyncedAt?.toISOString() ?? null,
+      extensionToken: createHandoffToken(userId),
     });
   } catch (error) {
     console.error("[auth/session]", error);
-    return NextResponse.json(
+    return corsJson(
       { connected: false, authenticated: false, channelCount: 0 },
       { status: 500 }
     );

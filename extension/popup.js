@@ -1,22 +1,23 @@
 const GROUPS_URL = "https://www.facebook.com/groups/joins/";
 
-// ── API configuration (Steps 4 & 5) ──────────────────────────────────────────
-// Production Vercel deployment. Change if your project URL differs.
-const PRODUCTION_API_BASE = "https://distro-theta.vercel.app";
+// Production Vercel deployment — must match host_permissions in manifest.json
+const PRODUCTION_API_BASE = "https://distro-auu6.vercel.app";
 const LOCAL_API_BASE = "http://localhost:3000";
+const API_BASE = PRODUCTION_API_BASE;
 
-// Set true while testing against a local Next.js dashboard.
-const USE_LOCAL_API = false;
-
-const API_BASE = USE_LOCAL_API ? LOCAL_API_BASE : PRODUCTION_API_BASE;
-
-// Must match server env DISTRO_API_KEY (Vercel / .env.local)
+// Must match server env DISTRO_API_KEY (Vercel)
 const DISTRO_API_KEY = "zpv9dq136kwfxcn0t285hgoeajmlryi7ub4s";
 
 const SYNC_URL = `${API_BASE}/api/channels/sync`;
+const SIGN_IN_URL = `${API_BASE}/signin`;
+
+function apiBases() {
+  return [LOCAL_API_BASE, PRODUCTION_API_BASE];
+}
 
 const statusEl = document.getElementById("status");
 const syncBtn = document.getElementById("syncBtn");
+const signInBtn = document.getElementById("signInBtn");
 
 function setStatus(message, tone = "info") {
   statusEl.textContent = message;
@@ -37,35 +38,184 @@ function sleep(ms) {
 function scrapeFacebookGroups() {
   const byId = new Map();
 
-  const addGroup = (id, name, memberCount, url) => {
-    if (!id || !/^\d+$/.test(String(id))) return;
-    const cleanName = (name || "").replace(/\s+/g, " ").trim();
-    if (!cleanName || cleanName.length < 2) return;
-    const prev = byId.get(id);
-    if (!prev || cleanName.length > prev.name.length) {
-      byId.set(id, {
-        id: String(id),
-        name: cleanName,
-        memberCount: Number.isFinite(memberCount) ? memberCount : undefined,
-        url: url || `https://www.facebook.com/groups/${id}`,
-      });
+  const NAME_NOISE = [
+    /\s*פעילות אחרונה[\s\S]*$/i,
+    /\s*פוסטים חדשים(?:\s+היום)?[\s\S]*$/i,
+    /\s*Last active[\s\S]*$/i,
+    /\s*Active now[\s\S]*$/i,
+    /\s*New posts?(?:\s+today)?[\s\S]*$/i,
+    /\s*[\d.,]+\s*(?:K|k|M|m|אלף|מיליון)?\s*(?:members?|חברים)[\s\S]*$/i,
+    /\s*[·•|].*$/,
+  ];
+
+  const nameLooksNoisy = (name) =>
+    /פעילות אחרונה|פוסטים חדשים|Last active|Active now|New posts?|members?|חברים/i.test(
+      name || ""
+    );
+
+  const cleanGroupName = (raw) => {
+    let name = (raw || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/[\u200e\u200f\u202a-\u202e]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    name = name.split(/\n/)[0].trim();
+    for (const re of NAME_NOISE) {
+      name = name.replace(re, "").trim();
     }
+    return name;
   };
 
   const parseMembers = (text) => {
     if (!text) return undefined;
-    const normalized = text
+    const normalized = String(text)
       .replace(/,/g, "")
-      .replace(/\u202f/g, "")
-      .replace(/[^\d.\sKkMmאלף]/g, " ");
-    const match = text.match(/([\d,.]+)\s*(K|k|M|m|אלף)?/);
+      .replace(/[\u00a0\u202f\u2009\u2007]/g, " ")
+      .replace(/[\u200e\u200f]/g, "")
+      .trim();
+
+    const match = normalized.match(
+      /([\d]+(?:\.[\d]+)?)\s*(K|k|M|m|אלף|מיליון)?/i
+    );
     if (!match) return undefined;
-    let n = parseFloat(match[1].replace(/,/g, ""));
+
+    let n = parseFloat(match[1]);
     if (Number.isNaN(n)) return undefined;
-    const suffix = match[2];
-    if (suffix && /k|אלף/i.test(suffix)) n *= 1000;
-    if (suffix && /m/i.test(suffix)) n *= 1_000_000;
+
+    const suffix = (match[2] || "").toLowerCase();
+    if (suffix === "k" || suffix === "אלף") n *= 1000;
+    if (suffix === "m" || suffix === "מיליון") n *= 1_000_000;
     return Math.round(n);
+  };
+
+  const findMemberCount = (root) => {
+    if (!root) return undefined;
+
+    const shortNodes = root.querySelectorAll("span, div, a");
+    for (const el of shortNodes) {
+      const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+      if (!text || text.length > 48) continue;
+      if (!/(?:members?|חברים)/i.test(text)) continue;
+      if (!/\d/.test(text)) continue;
+      const count = parseMembers(text);
+      if (Number.isFinite(count) && count > 0) return count;
+    }
+
+    const blob = (root.innerText || root.textContent || "").replace(
+      /\s+/g,
+      " "
+    );
+    const patterns = [
+      /([\d.,]+)\s*(K|k|M|m|אלף|מיליון)?\s*(?:members?|חברים)/i,
+      /(?:members?|חברים)\s*:?\s*([\d.,]+)\s*(K|k|M|m|אלף|מיליון)?/i,
+    ];
+    for (const re of patterns) {
+      const match = blob.match(re);
+      if (!match) continue;
+      const count = parseMembers(
+        `${match[1]}${match[2] ? ` ${match[2]}` : ""}`
+      );
+      if (Number.isFinite(count) && count > 0) return count;
+    }
+    return undefined;
+  };
+
+  const findCard = (anchor) =>
+    anchor.closest('[role="listitem"]') ||
+    anchor.closest('[role="article"]') ||
+    anchor.closest('[data-visualcompletion="ignore-dynamic"]') ||
+    anchor.closest("div[role='row']") ||
+    // Walk up a few levels — never stop at the immediate parent <div>
+    (() => {
+      let node = anchor.parentElement;
+      for (let i = 0; i < 6 && node; i += 1) {
+        const text = node.textContent || "";
+        if (/(?:members?|חברים)/i.test(text)) return node;
+        node = node.parentElement;
+      }
+      return anchor.parentElement?.parentElement || anchor.parentElement;
+    })();
+
+  const extractGroupName = (anchor, card) => {
+    const candidates = [];
+
+    // Prefer the link's own title span — not the parent container text
+    const inLink =
+      anchor.querySelector('span[dir="auto"]') ||
+      anchor.querySelector("span") ||
+      null;
+    if (inLink?.textContent?.trim()) candidates.push(inLink.textContent);
+
+    if (card) {
+      for (const sel of [
+        'a[role="link"] span[dir="auto"]',
+        'a[role="link"] span',
+        "h2",
+        "h3",
+        "strong",
+      ]) {
+        const el = card.querySelector(sel);
+        if (el?.textContent?.trim()) candidates.push(el.textContent);
+      }
+    }
+
+    const aria = anchor.getAttribute("aria-label");
+    if (aria?.trim()) candidates.push(aria);
+
+    let best = "";
+    for (const raw of candidates) {
+      const cleaned = cleanGroupName(raw);
+      if (cleaned.length < 2) continue;
+      if (!best) best = cleaned;
+      if (!nameLooksNoisy(cleaned)) {
+        if (nameLooksNoisy(best) || cleaned.length <= best.length) {
+          best = cleaned;
+        }
+      }
+    }
+
+    return best || cleanGroupName(anchor.textContent || "");
+  };
+
+  const addGroup = (id, name, memberCount, url) => {
+    if (!id || !/^\d+$/.test(String(id))) return;
+    const cleanName = cleanGroupName(name);
+    if (!cleanName || cleanName.length < 2) return;
+
+    const nextCount = Number.isFinite(memberCount) ? memberCount : undefined;
+    const prev = byId.get(id);
+
+    if (!prev) {
+      byId.set(id, {
+        id: String(id),
+        name: cleanName,
+        memberCount: nextCount,
+        url: url || `https://www.facebook.com/groups/${id}`,
+      });
+      return;
+    }
+
+    let bestName = prev.name;
+    if (!nameLooksNoisy(cleanName) && nameLooksNoisy(prev.name)) {
+      bestName = cleanName;
+    } else if (
+      !nameLooksNoisy(cleanName) &&
+      cleanName.length > 0 &&
+      cleanName.length < prev.name.length
+    ) {
+      // Prefer the shorter clean title over a container that swallowed metadata
+      bestName = cleanName;
+    } else if (nameLooksNoisy(prev.name) && cleanName.length >= 2) {
+      bestName = cleanName;
+    }
+
+    byId.set(id, {
+      ...prev,
+      name: bestName,
+      memberCount:
+        nextCount && nextCount > 0 ? nextCount : prev.memberCount,
+      url: prev.url || url || `https://www.facebook.com/groups/${id}`,
+    });
   };
 
   // Anchor links to /groups/<id>
@@ -74,30 +224,13 @@ function scrapeFacebookGroups() {
     const m = href.match(/\/groups\/(\d+)/);
     if (!m) return;
 
+    // Skip nav / chrome links that aren't group cards
+    if (/\/groups\/\d+\/(user|members|permalink)/i.test(href)) return;
+
     const id = m[1];
-    let name =
-      a.getAttribute("aria-label") ||
-      a.textContent ||
-      "";
-
-    // Prefer a nearby heading-like node when the anchor text is empty/noisy
-    if (!name.trim() || name.trim().length < 2) {
-      const card =
-        a.closest('[role="article"], [role="listitem"], div') || a.parentElement;
-      const title = card?.querySelector?.(
-        'span[dir="auto"], h2, h3, strong, a[role="link"]'
-      );
-      name = title?.textContent || name;
-    }
-
-    let memberCount;
-    const card =
-      a.closest('[role="article"], [role="listitem"], div') || a.parentElement;
-    const cardText = card?.textContent || "";
-    const memberMatch = cardText.match(
-      /([\d,.]+\s*(?:K|k|M|m|אלף)?)\s*(?:members|חברים)/i
-    );
-    if (memberMatch) memberCount = parseMembers(memberMatch[1]);
+    const card = findCard(a);
+    const name = extractGroupName(a, card);
+    const memberCount = findMemberCount(card);
 
     addGroup(id, name, memberCount, href.split("?")[0]);
   });
@@ -189,10 +322,208 @@ function waitForTabComplete(tabId, timeoutMs = 20000) {
   });
 }
 
-async function scrapeFromTab(tabId) {
+async function scrollAndScrapeFromTab(tabId) {
+  // Injected into the Facebook tab: infinite-scroll then scrape all groups + profile.
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: scrapeFacebookGroups,
+    func: async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      async function scrollGroupsFeedToEnd() {
+        let lastHeight = document.body.scrollHeight;
+        let retries = 0;
+        let safety = 0;
+        while (retries < 4 && safety < 200) {
+          safety += 1;
+          window.scrollTo(0, document.body.scrollHeight);
+          document
+            .querySelectorAll(
+              '[role="main"], [data-pagelet], div[style*="overflow"]'
+            )
+            .forEach((el) => {
+              try {
+                if (el.scrollHeight > el.clientHeight + 40) {
+                  el.scrollTop = el.scrollHeight;
+                }
+              } catch {
+                /* ignore */
+              }
+            });
+          await sleep(1500);
+          const newHeight = document.body.scrollHeight;
+          if (newHeight === lastHeight) retries += 1;
+          else {
+            retries = 0;
+            lastHeight = newHeight;
+          }
+        }
+        window.scrollTo(0, 0);
+        await sleep(400);
+      }
+
+      function getCookieValue(name) {
+        const parts = document.cookie.split(";");
+        for (const part of parts) {
+          const trimmed = part.trim();
+          if (trimmed.startsWith(`${name}=`)) {
+            return decodeURIComponent(trimmed.slice(name.length + 1));
+          }
+        }
+        return null;
+      }
+
+      function extractFacebookProfile() {
+        const cUser = getCookieValue("c_user");
+        let name = "";
+        let avatarUrl = "";
+        const nameSelectors = [
+          '[aria-label*="Your profile"]',
+          '[aria-label*="הפרופיל שלך"]',
+          '[aria-label*="Account"]',
+          'div[role="navigation"] a[href*="/me"]',
+          'a[href^="https://www.facebook.com/me"]',
+        ];
+        for (const sel of nameSelectors) {
+          const el = document.querySelector(sel);
+          if (!el) continue;
+          const aria = (el.getAttribute("aria-label") || "").trim();
+          const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+          let candidate = aria || text;
+          candidate = candidate
+            .replace(/'?s profile$/i, "")
+            .replace(/^Your profile$/i, "")
+            .replace(/^הפרופיל שלך$/i, "")
+            .trim();
+          if (
+            candidate &&
+            candidate.length >= 2 &&
+            candidate.length < 80 &&
+            !/facebook|menu|home|דף הבית/i.test(candidate)
+          ) {
+            name = candidate;
+            break;
+          }
+        }
+        const imgs = Array.from(
+          document.querySelectorAll(
+            'div[role="banner"] img, div[role="navigation"] img, [aria-label*="profile" i] img, svg image'
+          )
+        );
+        for (const node of imgs) {
+          let src =
+            node.currentSrc ||
+            node.src ||
+            node.getAttribute("src") ||
+            node.getAttribute("xlink:href") ||
+            node.getAttribute("href") ||
+            "";
+          const srcset = node.getAttribute?.("srcset") || "";
+          if (srcset) {
+            const parts = srcset
+              .split(",")
+              .map((p) => p.trim().split(/\s+/)[0]);
+            if (parts.length) src = parts[parts.length - 1] || src;
+          }
+          if (
+            src &&
+            /scontent|fbcdn|facebook\.com\/.*\/picture|graph\.facebook/i.test(
+              src
+            )
+          ) {
+            avatarUrl = src;
+            break;
+          }
+        }
+        if (!avatarUrl && cUser) {
+          avatarUrl = `https://graph.facebook.com/${cUser}/picture?type=large`;
+        }
+        if (!name || name.length < 2) {
+          name = cUser ? `משתמש ${cUser.slice(-4)}` : "משתמש פייסבוק";
+        }
+        return {
+          facebookId: cUser || "",
+          name,
+          avatarUrl,
+          isConnected: Boolean(cUser),
+        };
+      }
+
+      if (/\/groups\/joins/i.test(location.href)) {
+        await scrollGroupsFeedToEnd();
+      }
+
+      // Reuse the same DOM collectors as popup's scrapeFacebookGroups by
+      // querying all /groups/<id> anchors after scroll.
+      const byId = new Map();
+      const NAME_NOISE = [
+        /\s*פעילות אחרונה[\s\S]*$/i,
+        /\s*פוסטים חדשים(?:\s+היום)?[\s\S]*$/i,
+        /\s*Last active[\s\S]*$/i,
+        /\s*Active now[\s\S]*$/i,
+        /\s*New posts?(?:\s+today)?[\s\S]*$/i,
+        /\s*[\d.,]+\s*(?:K|k|M|m|אלף|מיליון)?\s*(?:members?|חברים)[\s\S]*$/i,
+        /\s*[·•|].*$/,
+      ];
+      const cleanGroupName = (raw) => {
+        let name = (raw || "")
+          .replace(/\u00a0/g, " ")
+          .replace(/[\u200e\u200f\u202a-\u202e]/g, "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .split(/\n/)[0]
+          .trim();
+        for (const re of NAME_NOISE) name = name.replace(re, "").trim();
+        return name;
+      };
+      const nameLooksNoisy = (name) =>
+        /פעילות אחרונה|פוסטים חדשים|Last active|Active now|New posts?|members?|חברים/i.test(
+          name || ""
+        );
+
+      document.querySelectorAll('a[href*="/groups/"]').forEach((a) => {
+        const href = a.href || a.getAttribute("href") || "";
+        const m = href.match(/\/groups\/(\d+)/);
+        if (!m) return;
+        if (/\/groups\/\d+\/(user|members|permalink)/i.test(href)) return;
+        const id = m[1];
+        const card =
+          a.closest('[role="listitem"]') ||
+          a.closest('[role="article"]') ||
+          a.closest('[data-visualcompletion="ignore-dynamic"]') ||
+          a.parentElement?.parentElement;
+        let name =
+          cleanGroupName(
+            a.querySelector('span[dir="auto"]')?.textContent ||
+              a.getAttribute("aria-label") ||
+              a.textContent ||
+              ""
+          ) || `Group ${id}`;
+        if (nameLooksNoisy(name) && card) {
+          const better = cleanGroupName(
+            card.querySelector('a[role="link"] span[dir="auto"]')?.textContent ||
+              ""
+          );
+          if (better && !nameLooksNoisy(better)) name = better;
+        }
+        const prev = byId.get(id);
+        if (!prev || (!nameLooksNoisy(name) && nameLooksNoisy(prev.name))) {
+          byId.set(id, {
+            id,
+            name,
+            url: href.split("?")[0],
+          });
+        }
+      });
+
+      const profile = extractFacebookProfile();
+      return {
+        groups: Array.from(byId.values()),
+        fbUserName: profile.name,
+        fbAvatarUrl: profile.avatarUrl,
+        fbProfile: profile,
+        pageUrl: location.href,
+      };
+    },
   });
   return result;
 }
@@ -226,19 +557,19 @@ async function syncGroups() {
       await sleep(800);
     }
 
-    setStatus("סורק קבוצות מהעמוד...", "warn");
-    let scraped = await scrapeFromTab(tab.id);
+    setStatus("גולל וממתין לטעינת כל הקבוצות...", "warn");
+    let scraped = await scrollAndScrapeFromTab(tab.id);
 
     // Soft retry if the SPA hadn't finished rendering
     if (!scraped?.groups?.length) {
       await sleep(2000);
-      scraped = await scrapeFromTab(tab.id);
+      scraped = await scrollAndScrapeFromTab(tab.id);
     }
 
     const groups = scraped?.groups || [];
     if (groups.length === 0) {
       setStatus(
-        "לא נמצאו קבוצות. ודאו שאתם בעמוד הקבוצות ושיש לכם קבוצות.",
+        "לא נמצאו קבוצות אחרי גלילה מלאה. רעננו את עמוד הקבוצות ונסו שוב.",
         "err"
       );
       return;
@@ -257,32 +588,100 @@ async function syncGroups() {
       path: c.path,
     }));
 
-    const payload = {
-      fbUserId,
-      fbUserName: scraped.fbUserName || "Facebook User",
+    const fbUserName = scraped.fbUserName || "Facebook User";
+    const fbAvatarUrl =
+      scraped.fbAvatarUrl ||
+      `https://graph.facebook.com/${fbUserId}/picture?type=large`;
+
+    await chrome.storage.local.set({
+      fbProfile: {
+        facebookId: fbUserId,
+        name: fbUserName,
+        avatarUrl: fbAvatarUrl,
+        isConnected: true,
+        syncedAt: Date.now(),
+      },
+      syncedGroups: groups.map((g) => ({
+        id: String(g.id),
+        name: g.name,
+        url: g.url,
+      })),
+    });
+
+    const sessionToken = await new Promise((resolve) => {
+      chrome.storage.local.get(["sessionToken"], (stored) => {
+        resolve(stored.sessionToken || null);
+      });
+    });
+
+    const groupsPayload = {
+      facebookId: fbUserId,
+      name: fbUserName,
+      avatarUrl: fbAvatarUrl,
       groups,
       cookies,
     };
 
-    const res = await fetch(SYNC_URL, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        "x-distro-key": DISTRO_API_KEY,
-      },
-      body: JSON.stringify(payload),
-    });
+    let data = null;
+    // Prefer authenticated multi-account endpoint
+    for (const base of apiBases()) {
+      try {
+        const headers = {
+          "Content-Type": "application/json",
+        };
+        if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
+        const res = await fetch(`${base}/api/facebook/groups`, {
+          method: "POST",
+          credentials: "include",
+          headers,
+          body: JSON.stringify(groupsPayload),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (res.ok && body.success) {
+          data = body;
+          break;
+        }
+      } catch {
+        /* try next */
+      }
+    }
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || `שגיאת שרת (${res.status})`);
+    // Fallback: legacy channels/sync with API key
+    if (!data?.success) {
+      const res = await fetch(SYNC_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-distro-key": DISTRO_API_KEY,
+        },
+        body: JSON.stringify({
+          fbUserId,
+          fbUserName,
+          fbAvatarUrl,
+          groups,
+          cookies,
+        }),
+      });
+      data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `שגיאת שרת (${res.status})`);
+      }
     }
 
     setStatus(
       `הסנכרון הושלם בהצלחה! סונכרנו ${data.syncedCount ?? groups.length} קבוצות.`,
       "ok"
     );
+
+    const token = data.extensionToken || data.handoffToken;
+    if (typeof token === "string" && token) {
+      await chrome.storage.local.set({
+        sessionToken: token,
+        authenticatedAt: Date.now(),
+      });
+      if (signInBtn) signInBtn.hidden = true;
+    }
 
     // Browser navigation sets the session cookie so the open /signin tab can redirect
     const handoffPath =
@@ -291,7 +690,6 @@ async function syncGroups() {
         : "/dashboard/channels";
     chrome.tabs.create({ url: `${API_BASE}${handoffPath}`, active: true });
   } catch (err) {
-    console.error(err);
     const message =
       err instanceof Error ? err.message : "שגיאה לא ידועה בסנכרון";
     if (/Failed to fetch|NetworkError/i.test(message)) {
@@ -307,6 +705,46 @@ async function syncGroups() {
   }
 }
 
+async function refreshAuthUi() {
+  try {
+    const stored = await chrome.storage.local.get([
+      "sessionToken",
+      "userId",
+    ]);
+    if (stored.sessionToken || stored.userId) {
+      if (signInBtn) signInBtn.hidden = true;
+      return;
+    }
+
+    const cookie = await chrome.cookies.get({
+      url: API_BASE,
+      name: "distro_user_id",
+    });
+    if (cookie?.value) {
+      await chrome.storage.local.set({
+        userId: cookie.value,
+        sessionToken: cookie.value,
+        authenticatedAt: Date.now(),
+      });
+      if (signInBtn) signInBtn.hidden = true;
+      return;
+    }
+
+    if (signInBtn) {
+      signInBtn.hidden = false;
+      setStatus("Sign in to Distro, then sync your Facebook groups.", "warn");
+    }
+  } catch {
+    if (signInBtn) signInBtn.hidden = false;
+  }
+}
+
+signInBtn?.addEventListener("click", () => {
+  chrome.tabs.create({ url: SIGN_IN_URL, active: true });
+});
+
 syncBtn.addEventListener("click", () => {
   void syncGroups();
 });
+
+void refreshAuthUi();

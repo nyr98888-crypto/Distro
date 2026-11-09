@@ -1,26 +1,60 @@
 {
   "manifest_version": 3,
-  "name": "Distro Facebook Sync",
+  "name": "DISTRO - Smart Group Campaign Manager",
   "version": "1.0.0",
-  "description": "Sync joined Facebook groups to your Distro dashboard for content scheduling.",
-  "permissions": ["cookies", "activeTab", "scripting"],
-  "host_permissions": [
-    "https://*.facebook.com/*",
-    "https://*.vercel.app/*",
-    "http://localhost:3000/*"
-  ],
+  "description": "Schedule, manage, and broadcast your marketing posts across your joined Facebook groups directly from your browser.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Distro - סנכרון קבוצות",
-    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    },
+    "default_title": "Open DISTRO"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.facebook.com/*"],
+      "js": ["content.js"],
+      "css": ["composer.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://distro-auu6.vercel.app/*"
+      ],
+      "js": ["web-bridge.js"],
+      "run_at": "document_start"
     }
+  ],
+  "permissions": [
+    "storage",
+    "alarms",
+    "cookies",
+    "tabs",
+    "scripting",
+    "notifications"
+  ],
+  "host_permissions": [
+    "*://*.facebook.com/*",
+    "https://distro-auu6.vercel.app/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "externally_connectable": {
+    "matches": [
+      "https://distro-auu6.vercel.app/*",
+      "http://localhost/*",
+      "http://127.0.0.1/*"
+    ]
   }
 }

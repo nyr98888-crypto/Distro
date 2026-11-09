@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDemoWorkspace } from "@/lib/demo-workspace";
 
-const COOKIE_NAME = "listpilot_user_id";
+const COOKIE_NAME = "distro_user_id";
 
 /**
  * POST /api/auth/dev-login

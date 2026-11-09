@@ -9,6 +9,7 @@ import {
   Loader2,
   ToggleRight,
 } from "lucide-react";
+import { pushAuthToExtension } from "@/components/auth/extension-auth-bridge";
 import { DevLoginButton } from "@/components/dashboard/dev-login-button";
 
 const POLL_MS = 2500;
@@ -59,9 +60,13 @@ export function ExtensionConnectPanel({
         const data = (await res.json()) as {
           connected?: boolean;
           channelCount?: number;
+          extensionToken?: string;
         };
         if (cancelled) return;
         if (data.connected) {
+          if (data.extensionToken) {
+            pushAuthToExtension(data.extensionToken);
+          }
           setListening(false);
           setStatusLabel(
             `התוסף התחבר — ${data.channelCount ?? 0} קבוצות. מעבירים ללוח הבקרה…`

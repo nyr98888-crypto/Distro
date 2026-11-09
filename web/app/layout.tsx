@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ListPilot",
-  description: "Automated content publishing platform",
+  title: "DISTRO",
+  description:
+    "Schedule and publish posts across your Facebook groups — privately, on your local machine.",
 };
 
 export default function RootLayout({

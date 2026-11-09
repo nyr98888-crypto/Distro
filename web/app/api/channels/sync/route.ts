@@ -53,7 +53,7 @@ function assertDistroApiKey(request: NextRequest): NextResponse | null {
 }
 
 /**
- * Resolve the active ListPilot user for extension sync.
+ * Resolve the active DISTRO user for extension sync.
  * Prefers the session cookie; in non-production may fall back to demo workspace.
  */
 async function resolveUserId(): Promise<string> {

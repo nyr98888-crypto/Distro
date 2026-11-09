@@ -9,13 +9,125 @@ generator client {
 }
 
 model User {
-  id           String             @id @default(uuid())
-  email        String             @unique
-  passwordHash String
-  accounts     ConnectedAccount[]
-  campaigns    Campaign[]
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id             String          @id @default(uuid())
+  email          String          @unique
+  passwordHash   String
+  accounts       ConnectedAccount[]
+  campaigns      Campaign[]
+  scheduledPosts ScheduledPost[]
+  groupPresets   GroupPreset[]
+  deviceSession  DeviceSession?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+/// Extension online presence for hybrid cloud fallback (user-scoped).
+model DeviceSession {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastExtensionPing DateTime @default(now())
+  isOnline          Boolean  @default(false)
+  extensionVersion  String   @default("")
+  updatedAt         DateTime @updatedAt
+}
+
+/// Desktop Chrome extension worker heartbeat (account-scoped remote queue).
+/// Conceptual table: device_workers
+model DeviceWorker {
+  id         String           @id @default(uuid())
+  accountId  String
+  account    ConnectedAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  lastSeenAt DateTime         @default(now())
+  isOnline   Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([accountId])
+  @@index([isOnline, lastSeenAt])
+}
+
+/// Saved target-group templates (e.g. "נדל״ן השרון").
+model GroupPreset {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Scoped to the Facebook ConnectedAccount that owns these groups
+  accountId String?
+  account   ConnectedAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name      String
+  /// JSON string[] of channel / group ids
+  groupIds  String   @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([accountId])
+}
+
+/// Remote + local campaign queue. Conceptual table: campaigns
+/// status: pending(=queued) | running(=processing) | paused | completed | failed | cancelled
+/// scheduleType: immediate(=now) | once | recurring
+model ScheduledPost {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Scoped to the Facebook account that publishes this campaign
+  accountId     String?
+  account       ConnectedAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  name          String    @default("")
+  content       String
+  imageUrl      String    @default("")
+  /// JSON array of { id, name, externalId?, url? } — target_group_ids payload
+  targetGroups  String    @default("[]")
+  scheduledTime DateTime
+  delaySeconds  Int       @default(60)
+  /// pending | running | paused | completed | failed | cancelled
+  status        String    @default("pending")
+  errorMessage  String    @default("")
+  /// JSON { phone, message, url } — WhatsApp CTA
+  whatsappJson  String    @default("")
+  /// immediate | once | recurring
+  scheduleType  String    @default("once")
+  /// JSON number[] — JS weekday 0=Sun … 6=Sat (target_days)
+  daysOfWeek    String    @default("[]")
+  /// HH:MM local time for recurring runs
+  runTime       String    @default("07:00")
+  endDate       DateTime?
+  maxRuns       Int?
+  runsCount     Int       @default(0)
+  isActive      Boolean   @default(true)
+  nextRunAt     DateTime?
+  /// extension | cloud — preferred executor; cron may override if offline
+  executionMode String    @default("extension")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  publishedPosts PublishedGroupPost[]
+
+  @@index([userId, scheduledTime])
+  @@index([accountId, status])
+  @@index([status, scheduledTime])
+  @@index([isActive, nextRunAt])
+  @@index([nextRunAt, isActive])
+}
+
+/// Per-group Facebook post URLs captured after a successful broadcast.
+model PublishedGroupPost {
+  id              String        @id @default(uuid())
+  scheduledPostId String
+  scheduledPost   ScheduledPost @relation(fields: [scheduledPostId], references: [id], onDelete: Cascade)
+  groupId         String        @default("")
+  groupName       String        @default("")
+  groupExternalId String        @default("")
+  postUrl         String
+  postFbId        String        @default("")
+  /// live | deleted | updated
+  status          String        @default("live")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([scheduledPostId])
+  @@index([postUrl])
 }
 
 model ConnectedAccount {
@@ -23,21 +135,37 @@ model ConnectedAccount {
   userId       String
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   platformName String   @default("facebook")
+  /// Facebook user id (c_user)
   identifier   String
+  displayName  String   @default("")
+  avatarUrl    String   @default("")
   /// AES-256-GCM encrypted Facebook cookies / access tokens (at rest)
   accessToken  String   @default("")
+  /// ACTIVE | DISCONNECTED
   status       String   @default("ACTIVE")
+  /// Currently selected account for the Distro dashboard / extension
+  isActive     Boolean  @default(false)
   lastSyncedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
   channels     Channel[]
   jobs         PublishJob[]
+  scheduledPosts ScheduledPost[]
+  groupPresets GroupPreset[]
+  deviceWorker DeviceWorker?
+
+  @@unique([userId, identifier])
+  @@index([userId, isActive])
 }
 
+/// Facebook groups synced for an account. Conceptual table: groups
 model Channel {
   id                 String           @id @default(uuid())
   accountId          String
   account            ConnectedAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// Facebook numeric group id (fb_group_id)
   externalId         String
   name               String
+  url                String           @default("")
   memberCount        Int              @default(0)
   categoryTags       String           @default("[]")
   isApprovalRequired Boolean          @default(false)

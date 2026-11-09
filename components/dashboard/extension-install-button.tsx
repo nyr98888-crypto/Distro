@@ -5,11 +5,19 @@ import { Download, Puzzle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const STEPS = [
-  "חלץ (Extract) את קובץ ה-ZIP לתיקייה במחשב שלך.",
-  'פתח בדפדפן כרום את הכתובת: chrome://extensions',
-  'הפעל את מתג "מצב מפתח" (Developer mode) בפינה הימנית/שמאלית העליונה.',
-  'לחץ על "טען תוסף לא ארוז" (Load unpacked) ובחר בתיקייה שחילצת.',
-  'פתח את פייסבוק, לחץ על האייקון של Distro בסרגל התוספים, ולחץ "סנכרן קבוצות".',
+  {
+    title: "הורידו וחלצו",
+    body: "לחצו על כפתור ההורדה למטה, ואז חלצו (Extract) את קובץ ה-ZIP לתיקייה קבועה במחשב.",
+  },
+  {
+    title: "טענו כתוסף לא ארוז",
+    body: "chrome://extensions",
+    isChromeUrl: true,
+  },
+  {
+    title: "סנכרנו קבוצות",
+    body: "פתחו את פייסבוק, לחצו על אייקון Distro בסרגל התוספים, ולחצו Sync Groups — הקבוצות יופיעו בדשבורד.",
+  },
 ] as const;
 
 export function ExtensionInstallButton() {
@@ -39,7 +47,8 @@ export function ExtensionInstallButton() {
         onClick={() => setOpen(true)}
       >
         <Puzzle className="size-4" />
-        התקנת תוסף כרום
+        <span className="hidden sm:inline">התקנת תוסף כרום לסנכרון</span>
+        <span className="sm:hidden">התקנת תוסף</span>
       </Button>
 
       {open && (
@@ -56,17 +65,17 @@ export function ExtensionInstallButton() {
             onClick={() => setOpen(false)}
           />
 
-          <div className="relative z-10 w-full max-w-lg rounded-xl border border-border bg-card p-5 text-right shadow-xl sm:p-6">
+          <div className="relative z-10 w-full max-w-lg rounded-xl border border-border bg-white p-5 text-right shadow-xl sm:p-6">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h2
                   id="extension-install-title"
-                  className="text-lg font-semibold text-foreground"
+                  className="text-lg font-semibold text-slate-900"
                 >
                   התקנת תוסף Distro
                 </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  סנכרנו קבוצות פייסבוק ישירות לדשבורד בכמה שלבים פשוטים.
+                <p className="mt-1 text-sm text-slate-500">
+                  לפני פרסום ב-Chrome Web Store — התקינו מקומית ב־3 שלבים.
                 </p>
               </div>
               <Button
@@ -83,36 +92,44 @@ export function ExtensionInstallButton() {
             <a
               href="/distro-extension.zip"
               download="distro-extension.zip"
-              className="mb-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90"
+              className="mb-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#1877f2] px-4 text-sm font-medium text-white shadow transition-colors hover:bg-[#166fe5]"
             >
               <Download className="size-4" />
               הורד תוסף Distro (ZIP)
             </a>
 
-            <ol className="space-y-3">
+            <ol className="space-y-4">
               {STEPS.map((step, index) => (
-                <li key={step} className="flex gap-3 text-sm leading-relaxed">
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
+                <li key={step.title} className="flex gap-3 text-sm leading-relaxed">
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-900">
                     {index + 1}
                   </span>
-                  <span className="pt-1 text-foreground">
-                    {index === 1 ? (
-                      <>
-                        פתח בדפדפן כרום את הכתובת:{" "}
+                  <div className="pt-0.5">
+                    <p className="font-semibold text-slate-900">{step.title}</p>
+                    {"isChromeUrl" in step && step.isChromeUrl ? (
+                      <p className="mt-1 text-slate-600">
+                        פתחו{" "}
                         <code
                           dir="ltr"
-                          className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
+                          className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800"
                         >
                           chrome://extensions
                         </code>
-                      </>
+                        , הפעילו Developer mode, לחצו Load unpacked ובחרו את
+                        התיקייה שחילצתם.
+                      </p>
                     ) : (
-                      step
+                      <p className="mt-1 text-slate-600">{step.body}</p>
                     )}
-                  </span>
+                  </div>
                 </li>
               ))}
             </ol>
+
+            <p className="mt-5 text-xs leading-relaxed text-slate-500">
+              באנדרואיד אפשר להריץ את אותו תוסף דרך Kiwi Browser או Lemur Browser
+              מ־Google Play. ב־iOS אין תמיכה בתוספי כרום.
+            </p>
           </div>
         </div>
       )}
