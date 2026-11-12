@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS "ConnectedAccount" (
   "status" TEXT NOT NULL DEFAULT 'ACTIVE',
   "isActive" BOOLEAN NOT NULL DEFAULT false,
   "lastSyncedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "ConnectedAccount_userId_identifier_key"
   ON "ConnectedAccount"("userId", "identifier");
@@ -117,7 +118,8 @@ CREATE TABLE IF NOT EXISTS "Campaign" (
   "rawContent" TEXT NOT NULL,
   "mediaUrls" TEXT NOT NULL DEFAULT '[]',
   "status" TEXT NOT NULL DEFAULT 'DRAFT',
-  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS "Channel" (
@@ -186,8 +188,55 @@ CREATE TABLE IF NOT EXISTS "PublishJob" (
 `;
 
 await client.executeMultiple(ddl);
+
+async function addColumnIfMissing(table, column, ddlFrag) {
+  const cols = await client.execute(`PRAGMA table_info("${table}")`);
+  const exists = cols.rows.some((row) => String(row.name) === column);
+  if (exists) {
+    console.log(`ok: ${table}.${column}`);
+    return;
+  }
+  await client.execute(
+    `ALTER TABLE "${table}" ADD COLUMN "${column}" ${ddlFrag}`
+  );
+  console.log(`added: ${table}.${column}`);
+}
+
+const dateDefault = "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP";
+const migrations = [
+  ["User", "updatedAt", dateDefault],
+  ["User", "createdAt", dateDefault],
+  ["User", "facebookId", "TEXT"],
+  ["User", "name", "TEXT NOT NULL DEFAULT ''"],
+  ["ConnectedAccount", "updatedAt", dateDefault],
+  ["ConnectedAccount", "createdAt", dateDefault],
+  ["ConnectedAccount", "lastSyncedAt", dateDefault],
+  ["ConnectedAccount", "avatarUrl", "TEXT NOT NULL DEFAULT ''"],
+  ["ConnectedAccount", "displayName", "TEXT NOT NULL DEFAULT ''"],
+  ["Campaign", "updatedAt", dateDefault],
+  ["DeviceSession", "updatedAt", dateDefault],
+  ["DeviceWorker", "updatedAt", dateDefault],
+  ["GroupPreset", "updatedAt", dateDefault],
+  ["ScheduledPost", "updatedAt", dateDefault],
+  ["PublishedGroupPost", "updatedAt", dateDefault],
+];
+
+for (const [table, column, frag] of migrations) {
+  try {
+    await addColumnIfMissing(table, column, frag);
+  } catch (error) {
+    console.warn(`migrate warning ${table}.${column}:`, error?.message || error);
+  }
+}
+
 const tables = await client.execute(
   "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
 );
 console.log("Turso tables:", tables.rows.map((r) => r.name).join(", "));
+
+const caCols = await client.execute(`PRAGMA table_info("ConnectedAccount")`);
+console.log(
+  "ConnectedAccount columns:",
+  caCols.rows.map((r) => r.name).join(", ")
+);
 client.close();

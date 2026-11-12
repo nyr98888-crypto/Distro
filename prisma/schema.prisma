@@ -151,6 +151,7 @@ model ConnectedAccount {
   isActive     Boolean  @default(false)
   lastSyncedAt DateTime @default(now())
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   channels     Channel[]
   jobs         PublishJob[]
   scheduledPosts ScheduledPost[]

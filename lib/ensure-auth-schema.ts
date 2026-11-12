@@ -54,6 +54,7 @@ export async function ensureAuthSchema(): Promise<void> {
           "isActive" BOOLEAN NOT NULL DEFAULT false,
           "lastSyncedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT "ConnectedAccount_userId_fkey"
             FOREIGN KEY ("userId") REFERENCES "User" ("id")
             ON DELETE CASCADE ON UPDATE CASCADE
@@ -119,6 +120,7 @@ export async function ensureAuthSchema(): Promise<void> {
           "mediaUrls" TEXT NOT NULL DEFAULT '[]',
           "status" TEXT NOT NULL DEFAULT 'DRAFT',
           "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT "Campaign_userId_fkey"
             FOREIGN KEY ("userId") REFERENCES "User" ("id")
             ON DELETE CASCADE ON UPDATE CASCADE
@@ -224,12 +226,80 @@ export async function ensureAuthSchema(): Promise<void> {
         );
       `);
 
-      // Older local DBs may predate Facebook OAuth columns.
+      // Older DBs may predate Facebook OAuth / Prisma-era timestamp columns.
+      // CREATE TABLE IF NOT EXISTS will not add columns to existing tables.
       try {
         await addColumnIfMissing("User", "facebookId", "TEXT");
         await addColumnIfMissing("User", "name", "TEXT NOT NULL DEFAULT ''");
+        await addColumnIfMissing(
+          "User",
+          "updatedAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        );
+        await addColumnIfMissing(
+          "User",
+          "createdAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        );
         await turso.execute(
           `CREATE UNIQUE INDEX IF NOT EXISTS "User_facebookId_key" ON "User"("facebookId")`
+        );
+
+        await addColumnIfMissing(
+          "ConnectedAccount",
+          "updatedAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        );
+        await addColumnIfMissing(
+          "ConnectedAccount",
+          "createdAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        );
+        await addColumnIfMissing(
+          "ConnectedAccount",
+          "lastSyncedAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        );
+        await addColumnIfMissing(
+          "ConnectedAccount",
+          "avatarUrl",
+          "TEXT NOT NULL DEFAULT ''"
+        );
+        await addColumnIfMissing(
+          "ConnectedAccount",
+          "displayName",
+          "TEXT NOT NULL DEFAULT ''"
+        );
+
+        await addColumnIfMissing(
+          "Campaign",
+          "updatedAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        );
+        await addColumnIfMissing(
+          "DeviceSession",
+          "updatedAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        );
+        await addColumnIfMissing(
+          "DeviceWorker",
+          "updatedAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        );
+        await addColumnIfMissing(
+          "GroupPreset",
+          "updatedAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        );
+        await addColumnIfMissing(
+          "ScheduledPost",
+          "updatedAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        );
+        await addColumnIfMissing(
+          "PublishedGroupPost",
+          "updatedAt",
+          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
         );
       } catch (error) {
         console.warn("[ensure-auth-schema] column migrate warning:", error);
