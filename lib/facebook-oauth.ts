@@ -1,15 +1,15 @@
 import "server-only";
 
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
-import { getAppUrl } from "@/lib/app-url";
 import { prisma } from "@/lib/prisma";
 import { ensureAuthSchema } from "@/lib/ensure-auth-schema";
 
 const GRAPH_VERSION = "v21.0";
 const STATE_COOKIE = "distro_fb_oauth_state";
+const REDIRECT_COOKIE = "distro_fb_oauth_redirect";
 const STATE_MAX_AGE = 60 * 10; // 10 minutes
 
-export { STATE_COOKIE, STATE_MAX_AGE };
+export { STATE_COOKIE, REDIRECT_COOKIE, STATE_MAX_AGE, GRAPH_VERSION };
 
 function oauthSecret(): string {
   return (
@@ -20,20 +20,24 @@ function oauthSecret(): string {
   );
 }
 
-export function getFacebookOAuthConfig(): {
+export function getFacebookCredentials(): {
   clientId: string;
   clientSecret: string;
-  redirectUri: string;
 } {
   const clientId = process.env.FACEBOOK_CLIENT_ID?.trim() || "";
   const clientSecret = process.env.FACEBOOK_CLIENT_SECRET?.trim() || "";
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      "Facebook Login is not configured: set FACEBOOK_CLIENT_ID and FACEBOOK_CLIENT_SECRET"
-    );
+  if (!clientId) {
+    throw new Error("FACEBOOK_CLIENT_ID is missing");
   }
-  const redirectUri = `${getAppUrl().replace(/\/$/, "")}/api/auth/facebook/callback`;
-  return { clientId, clientSecret, redirectUri };
+  if (!clientSecret) {
+    throw new Error("FACEBOOK_CLIENT_SECRET is missing");
+  }
+  return { clientId, clientSecret };
+}
+
+/** Build the OAuth callback URL from the live request origin (localhost or Vercel). */
+export function buildFacebookRedirectUri(origin: string): string {
+  return `${origin.replace(/\/$/, "")}/api/auth/facebook/callback`;
 }
 
 export function createOAuthState(): string {
@@ -57,8 +61,11 @@ export function verifyOAuthState(state: string | null | undefined): boolean {
   return timingSafeEqual(a, b);
 }
 
-export function buildFacebookAuthUrl(state: string): string {
-  const { clientId, redirectUri } = getFacebookOAuthConfig();
+export function buildFacebookAuthUrl(
+  state: string,
+  redirectUri: string
+): string {
+  const { clientId } = getFacebookCredentials();
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -66,7 +73,7 @@ export function buildFacebookAuthUrl(state: string): string {
     response_type: "code",
     scope: "email,public_profile",
   });
-  return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params}`;
+  return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 }
 
 type FacebookTokenResponse = {
@@ -83,9 +90,10 @@ type FacebookProfile = {
 };
 
 export async function exchangeFacebookCode(
-  code: string
+  code: string,
+  redirectUri: string
 ): Promise<{ accessToken: string; profile: FacebookProfile }> {
-  const { clientId, clientSecret, redirectUri } = getFacebookOAuthConfig();
+  const { clientId, clientSecret } = getFacebookCredentials();
 
   const tokenUrl = new URL(
     `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`

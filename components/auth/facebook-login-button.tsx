@@ -22,7 +22,7 @@ type FacebookLoginButtonProps = {
   className?: string;
 };
 
-/** Primary one-click Facebook Login — navigates to /api/auth/facebook. */
+/** One-click Facebook Login — navigates to /api/auth/facebook. */
 export function FacebookLoginButton({ className }: FacebookLoginButtonProps) {
   const { t } = useI18n();
 
@@ -31,7 +31,7 @@ export function FacebookLoginButton({ className }: FacebookLoginButtonProps) {
       href="/api/auth/facebook"
       className={
         className ??
-        "inline-flex h-11 w-full items-center justify-center gap-2.5 rounded-lg bg-[#1877F2] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#166FE5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1877F2]/60"
+        "inline-flex h-12 w-full max-w-sm items-center justify-center gap-2.5 rounded-xl bg-[#1877F2] px-5 text-base font-semibold text-white shadow-sm transition hover:bg-[#166FE5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1877F2]/60"
       }
     >
       <FacebookIcon className="size-5 shrink-0" />
