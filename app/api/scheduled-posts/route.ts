@@ -36,7 +36,7 @@ const createSchema = z.object({
     .default("07:00"),
   endDate: z.string().datetime({ offset: true }).optional().nullable(),
   maxRuns: z.number().int().min(1).max(10000).optional().nullable(),
-  executionMode: z.enum(["extension", "cloud"]).optional().default("extension"),
+  executionMode: z.enum(["extension", "cloud"]).optional().default("cloud"),
   whatsapp: z
     .object({
       phone: z.string(),
@@ -243,7 +243,7 @@ export async function POST(request: NextRequest) {
         runsCount: 0,
         isActive: true,
         nextRunAt,
-        executionMode: data.executionMode || "extension",
+        executionMode: data.executionMode || "cloud",
       },
     });
 

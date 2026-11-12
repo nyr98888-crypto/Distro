@@ -159,6 +159,7 @@ export function CampaignsDashboard({
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [syncingGroups, setSyncingGroups] = React.useState(false);
+  const [runningScheduler, setRunningScheduler] = React.useState(false);
   const [liveGroupCount, setLiveGroupCount] = React.useState(
     () => initialChannels.filter((c) => c?.isActive).length
   );
@@ -443,14 +444,65 @@ export function CampaignsDashboard({
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <button
             type="button"
+            disabled={runningScheduler}
+            onClick={() => {
+              setRunningScheduler(true);
+              setError(null);
+              void (async () => {
+                try {
+                  const res = await fetch("/api/campaigns/run", {
+                    method: "POST",
+                    credentials: "include",
+                  });
+                  const data = (await res.json().catch(() => null)) as {
+                    success?: boolean;
+                    error?: string;
+                    processed?: number;
+                  } | null;
+                  if (!res.ok || !data?.success) {
+                    throw new Error(
+                      data?.error ||
+                        (dir === "rtl"
+                          ? "הפעלת התזמון נכשלה"
+                          : "Scheduler run failed")
+                    );
+                  }
+                  await load({ silent: true });
+                } catch (err) {
+                  setError(
+                    err instanceof Error
+                      ? err.message
+                      : dir === "rtl"
+                        ? "הפעלת התזמון נכשלה"
+                        : "Scheduler run failed"
+                  );
+                } finally {
+                  setRunningScheduler(false);
+                }
+              })();
+            }}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100 disabled:opacity-60"
+          >
+            {runningScheduler ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            {dir === "rtl" ? "הפעל תזמון עכשיו" : "Run Scheduler Now"}
+          </button>
+          <button
+            type="button"
             disabled={syncingGroups}
             onClick={() => {
               setSyncingGroups(true);
               setError(null);
               void (async () => {
                 try {
-                  const res = await fetch("/api/facebook/sync", {
+                  const res = await fetch("/api/groups/sync", {
                     method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ seedIfEmpty: true }),
                   });
                   const data = (await res.json().catch(() => null)) as {
                     success?: boolean;

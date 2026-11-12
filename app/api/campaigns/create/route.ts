@@ -41,10 +41,10 @@ const bodySchema = z.object({
   target_days: z.array(z.number().int().min(0).max(6)).optional(),
   runTime: z.string().optional(),
   run_time: z.string().optional(),
-  delaySeconds: z.number().int().min(0).max(3600).optional().default(60),
+  delaySeconds: z.number().int().min(0).max(3600).optional().default(75),
   endDate: z.string().datetime({ offset: true }).optional().nullable(),
   maxRuns: z.number().int().positive().optional().nullable(),
-  executionMode: z.enum(["extension", "cloud"]).optional().default("extension"),
+  executionMode: z.enum(["extension", "cloud"]).optional().default("cloud"),
 });
 
 /**
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
         runsCount: 0,
         isActive: true,
         nextRunAt,
-        executionMode: data.executionMode || "extension",
+        executionMode: data.executionMode || "cloud",
       },
       include: { publishedPosts: true },
     });

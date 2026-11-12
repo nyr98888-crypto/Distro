@@ -1,12 +1,12 @@
 {
   "crons": [
     {
-      "path": "/api/cron/check-schedules",
+      "path": "/api/campaigns/run",
       "schedule": "*/5 * * * *"
     },
     {
-      "path": "/api/worker",
-      "schedule": "* * * * *"
+      "path": "/api/cron/check-schedules",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

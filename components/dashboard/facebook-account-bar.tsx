@@ -130,7 +130,12 @@ export function FacebookAccountBar({
     setBusy(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/facebook/sync", { method: "POST" });
+      const res = await fetch("/api/groups/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ seedIfEmpty: true }),
+      });
       const data = (await res.json().catch(() => null)) as {
         success?: boolean;
         error?: string;

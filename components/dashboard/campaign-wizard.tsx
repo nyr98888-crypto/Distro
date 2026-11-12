@@ -48,10 +48,11 @@ type WizardProps = {
 };
 
 const DELAY_OPTIONS = [
-  { value: 30, label: "30 שניות" },
-  { value: 60, label: "60 שניות (מומלץ)" },
+  { value: 45, label: "45 שניות" },
+  { value: 60, label: "60 שניות" },
+  { value: 75, label: "75 שניות (מומלץ)" },
+  { value: 90, label: "90 שניות" },
   { value: 120, label: "120 שניות" },
-  { value: 300, label: "300 שניות" },
 ];
 
 async function uploadCampaignImage(file: File): Promise<string> {
@@ -159,10 +160,10 @@ export function CampaignWizard({
   const [endMode, setEndMode] = React.useState<ScheduleEndMode>("never");
   const [endDate, setEndDate] = React.useState("");
   const [maxRuns, setMaxRuns] = React.useState(10);
-  const [delaySeconds, setDelaySeconds] = React.useState(60);
+  const [delaySeconds, setDelaySeconds] = React.useState(75);
   const [executionMode, setExecutionMode] = React.useState<
     "extension" | "cloud"
-  >("extension");
+  >("cloud");
   const [pending, setPending] = React.useState(false);
   const [loadingEdit, setLoadingEdit] = React.useState(Boolean(editPostId));
   const [error, setError] = React.useState<string | null>(null);
@@ -1083,22 +1084,11 @@ export function CampaignWizard({
               <p className="text-xs font-semibold text-slate-900">
                 {dir === "rtl" ? "מצב ביצוע" : "Run mode"}
               </p>
-              <FieldHint>{t("helperExecution")}</FieldHint>
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="executionMode"
-                  checked={executionMode === "extension"}
-                  onChange={() => setExecutionMode("extension")}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="font-semibold">תוסף Chrome (מומלץ)</span>
-                  <span className="mt-0.5 block text-xs text-[#65676b]">
-                    מריץ על המחשב שלכם. אם המחשב כבוי — הענן ינסה להשלים.
-                  </span>
-                </span>
-              </label>
+              <FieldHint>
+                {dir === "rtl"
+                  ? "ברירת מחדל: שרת Vercel (ללא תוסף). לחצו ״הפעל תזמון עכשיו״ בדשבורד או המתינו לקרון."
+                  : "Default: Vercel server (no extension). Use “Run Scheduler Now” or wait for cron."}
+              </FieldHint>
               <label className="flex items-start gap-2 text-sm">
                 <input
                   type="radio"
@@ -1108,10 +1098,32 @@ export function CampaignWizard({
                   className="mt-1"
                 />
                 <span>
-                  <span className="font-semibold">ענן בלבד</span>
+                  <span className="font-semibold">
+                    {dir === "rtl" ? "ענן Vercel (מומלץ)" : "Vercel cloud (recommended)"}
+                  </span>
                   <span className="mt-0.5 block text-xs text-[#65676b]">
-                    מתאים לאייפון / ללא תוסף — דורש worker מוגדר
-                    (DISTRO_CLOUD_WORKER_URL).
+                    {dir === "rtl"
+                      ? "מריץ על השרת — בלי Chrome. פרסום לעמודים דרך Graph; קבוצות מסומנות כפורסמו בלוג."
+                      : "Runs on the server — no Chrome. Pages via Graph; groups logged as published."}
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="executionMode"
+                  checked={executionMode === "extension"}
+                  onChange={() => setExecutionMode("extension")}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="font-semibold">
+                    {dir === "rtl" ? "תוסף Chrome (אופציונלי)" : "Chrome extension (optional)"}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-[#65676b]">
+                    {dir === "rtl"
+                      ? "רק אם מותקן תוסף — לא נדרש לזרימת הבדיקה."
+                      : "Only if the extension is installed — not required for the test flow."}
                   </span>
                 </span>
               </label>
