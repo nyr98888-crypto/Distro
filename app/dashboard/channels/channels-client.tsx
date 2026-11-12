@@ -9,6 +9,7 @@ import {
   type ChannelDTO,
 } from "@/lib/channels-shared";
 import {
+  onExtensionReady,
   pingExtension,
   requestExtensionScrapeGroups,
 } from "@/lib/extension-bridge";
@@ -39,7 +40,13 @@ export function ChannelsClient({
   );
 
   React.useEffect(() => {
-    pingExtension((ok) => setExtensionReady(ok));
+    const unsub = onExtensionReady(() => setExtensionReady(true));
+    // Proactive ping so the dashboard recognizes an already-loaded bridge
+    pingExtension((ok) => {
+      if (ok) setExtensionReady(true);
+      else setExtensionReady((prev) => (prev === true ? true : false));
+    });
+    return unsub;
   }, []);
 
   async function syncGroups() {

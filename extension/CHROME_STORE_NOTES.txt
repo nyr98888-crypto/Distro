@@ -89,7 +89,7 @@ Data usage checklist:
 --------------------------------------------------------------------------------
 3) REVIEWER / TESTER INSTRUCTIONS
 --------------------------------------------------------------------------------
-1. Web Dashboard: https://distro-ecru.vercel.app/login
+1. Web Dashboard: https://distro-ecru.vercel.app/signin
 2. Reviewer account:
    - Email: reviewer@distro.app
    - Password: ReviewerPass2026!

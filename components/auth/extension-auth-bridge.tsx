@@ -2,23 +2,6 @@
 
 import * as React from "react";
 
-declare global {
-  interface Window {
-    chrome?: {
-      runtime?: {
-        sendMessage?: (
-          extensionId: string,
-          message: unknown,
-          responseCallback?: (response: unknown) => void
-        ) => void;
-        lastError?: { message?: string };
-      };
-    };
-  }
-}
-
-const EXTENSION_ID = process.env.NEXT_PUBLIC_EXTENSION_ID || "";
-
 /** Push dashboard session token + userId to the Chrome extension (if present). */
 export function pushAuthToExtension(
   token: string,
@@ -38,16 +21,6 @@ export function pushAuthToExtension(
   } catch {
     // ignore
   }
-
-  if (!EXTENSION_ID || !window.chrome?.runtime?.sendMessage) return;
-
-  try {
-    window.chrome.runtime.sendMessage(EXTENSION_ID, payload, () => {
-      void window.chrome?.runtime?.lastError;
-    });
-  } catch {
-    // Extension not installed — expected for many visitors
-  }
 }
 
 type ExtensionAuthBridgeProps = {
@@ -59,6 +32,7 @@ type ExtensionAuthBridgeProps = {
 /**
  * When the dashboard loads for an authenticated user, notify the extension
  * so it can store sessionToken + userId in chrome.storage.local.
+ * Uses window.postMessage → web-bridge (no hardcoded Extension ID).
  */
 export function ExtensionAuthBridge({
   token,

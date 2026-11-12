@@ -30,21 +30,6 @@ export type ScrapedGroup = {
   memberCount?: number;
 };
 
-declare global {
-  interface Window {
-    chrome?: {
-      runtime?: {
-        sendMessage?: (
-          extensionId: string,
-          message: unknown,
-          responseCallback?: (response: unknown) => void
-        ) => void;
-        lastError?: { message?: string };
-      };
-    };
-  }
-}
-
 function postToPage(message: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   try {
@@ -54,19 +39,6 @@ function postToPage(message: Record<string, unknown>) {
     );
   } catch {
     /* ignore */
-  }
-}
-
-function sendToExtension(message: Record<string, unknown>) {
-  const extId = process.env.NEXT_PUBLIC_EXTENSION_ID;
-  if (typeof window === "undefined") return;
-  if (!extId || !window.chrome?.runtime?.sendMessage) return;
-  try {
-    window.chrome.runtime.sendMessage(extId, message, () => {
-      void window.chrome?.runtime?.lastError;
-    });
-  } catch {
-    /* Extension not installed */
   }
 }
 
@@ -106,29 +78,36 @@ function sendToExtensionWithResponse(
   window.addEventListener("message", onBridgeResponse);
   window.setTimeout(() => finish(null), timeoutMs);
 
-  // Prefer web-bridge round-trip (works without NEXT_PUBLIC_EXTENSION_ID)
+  // Content-script web-bridge only — no hardcoded Extension ID
   postToPage({ ...message, requestId });
+}
 
-  const extId = process.env.NEXT_PUBLIC_EXTENSION_ID;
-  if (!extId || !window.chrome?.runtime?.sendMessage) return;
-  try {
-    window.chrome.runtime.sendMessage(
-      extId,
-      { ...message, requestId },
-      (response) => {
-        void window.chrome?.runtime?.lastError;
-        if (response != null) finish(response);
-      }
-    );
-  } catch {
-    /* web-bridge may still answer */
-  }
+/** Subscribe to DISTRO_EXTENSION_READY from the content-script bridge. */
+export function onExtensionReady(
+  onReady: (info: { version: string | null }) => void
+): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  const handler = (event: MessageEvent) => {
+    if (event.source !== window) return;
+    const data = event.data as {
+      source?: string;
+      type?: string;
+      version?: string | null;
+    } | null;
+    if (!data || data.source !== "distro-extension") return;
+    if (data.type !== "DISTRO_EXTENSION_READY") return;
+    onReady({ version: data.version ?? null });
+  };
+
+  window.addEventListener("message", handler);
+  return () => window.removeEventListener("message", handler);
 }
 
 /** Detect installed extension via page bridge (no hardcoded Extension ID). */
 export function pingExtension(onDone?: (ok: boolean) => void): void {
   sendToExtensionWithResponse(
-    { type: "PING", action: "PING" },
+    { type: "DISTRO_PING", action: "PING" },
     (response) => {
       const ok = Boolean(
         response &&
@@ -144,17 +123,14 @@ export function pingExtension(onDone?: (ok: boolean) => void): void {
 
 export function notifyExtensionSchedule(post: ScheduledPostDTO): void {
   postToPage({ type: "SCHEDULE_POST", post });
-  sendToExtension({ type: "SCHEDULE_POST", post });
 }
 
 export function notifyExtensionCancel(postId: string): void {
   postToPage({ type: "CANCEL_SCHEDULED_POST", postId });
-  sendToExtension({ type: "CANCEL_SCHEDULED_POST", postId });
 }
 
 export function notifyExtensionLiveUpdate(job: LiveUpdateJob): void {
   postToPage({ type: "LIVE_UPDATE_POSTS", job });
-  sendToExtension({ type: "LIVE_UPDATE_POSTS", job });
 }
 
 /** Cookie-swap to an already saved Distro Facebook account. */
@@ -219,11 +195,18 @@ export function requestExtensionScrapeGroups(
 ): void {
   sendToExtensionWithResponse(
     {
-      type: "SCRAPE_GROUPS",
+      type: "DISTRO_SYNC_GROUPS",
       action: "SCRAPE_GROUPS",
     },
     (response) => {
-      if (!response || typeof response !== "object") {
+      if (!response || typeof response === "undefined") {
+        onDone?.({
+          ok: false,
+          error: "No response from extension — is DISTRO installed?",
+        });
+        return;
+      }
+      if (typeof response !== "object") {
         onDone?.({
           ok: false,
           error: "No response from extension — is DISTRO installed?",

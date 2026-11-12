@@ -1,8 +1,7 @@
 const GROUPS_URL = "https://www.facebook.com/groups/joins/";
 
-// Live production only — dead hosts (distro-auu6 / distro-theta) return Vercel DEPLOYMENT_NOT_FOUND
+// Live production only — https://distro-ecru.vercel.app (auu6 is DEAD)
 const PRODUCTION_API_BASE = "https://distro-ecru.vercel.app";
-const LOCAL_API_BASE = "http://localhost:3000";
 const API_BASE = PRODUCTION_API_BASE;
 
 // Must match server env DISTRO_API_KEY (Vercel)
@@ -13,8 +12,7 @@ const CHANNELS_SYNC_URL = `${API_BASE}/api/channels/sync`;
 const SIGN_IN_URL = `${API_BASE}/signin`;
 
 function apiBases() {
-  // Prefer live production; localhost only as a silent fallback for local Next.js.
-  return [PRODUCTION_API_BASE, LOCAL_API_BASE];
+  return [PRODUCTION_API_BASE];
 }
 
 /** Map HTTP status to a clear Hebrew popup message. */

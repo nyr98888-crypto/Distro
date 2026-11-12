@@ -1,8 +1,7 @@
 importScripts("schedule-engine.js");
 
 const PRODUCTION_APP = "https://distro-ecru.vercel.app";
-const LOCAL_APP = "http://localhost:3000";
-const LOGIN_URL = `${PRODUCTION_APP}/login`;
+const LOGIN_URL = `${PRODUCTION_APP}/signin`;
 const GROUPS_URL = "https://www.facebook.com/groups/joins/";
 const ALARM_PREFIX = "distro-sched-";
 
@@ -17,8 +16,8 @@ const DASHBOARD_TAB_URLS = [
 ];
 
 function apiBases() {
-  // Prefer production (distro-ecru) — fall back to local for dev.
-  return [PRODUCTION_APP, LOCAL_APP];
+  // Live production only (distro-auu6 is DEAD / DEPLOYMENT_NOT_FOUND).
+  return [PRODUCTION_APP];
 }
 
 const HEARTBEAT_ALARM = "distro-heartbeat";
@@ -1093,7 +1092,11 @@ chrome.cookies.onChanged.addListener((changeInfo) => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type === "PING" || message?.action === "PING") {
+  if (
+    message?.type === "DISTRO_PING" ||
+    message?.type === "PING" ||
+    message?.action === "PING"
+  ) {
     sendResponse({
       ok: true,
       pong: true,
@@ -1126,6 +1129,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (
+    message?.type === "DISTRO_SYNC_GROUPS" ||
     message?.type === "SCRAPE_GROUPS" ||
     message?.action === "SCRAPE_GROUPS"
   ) {
@@ -1333,7 +1337,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 chrome.runtime.onMessageExternal.addListener(
   (message, _sender, sendResponse) => {
-    if (message?.type === "PING" || message?.action === "PING") {
+    if (
+      message?.type === "DISTRO_PING" ||
+      message?.type === "PING" ||
+      message?.action === "PING"
+    ) {
       sendResponse({
         ok: true,
         pong: true,
@@ -1353,6 +1361,7 @@ chrome.runtime.onMessageExternal.addListener(
       return true;
     }
     if (
+      message?.type === "DISTRO_SYNC_GROUPS" ||
       message?.type === "SCRAPE_GROUPS" ||
       message?.action === "SCRAPE_GROUPS" ||
       message?.type === "SYNC_GROUPS" ||
