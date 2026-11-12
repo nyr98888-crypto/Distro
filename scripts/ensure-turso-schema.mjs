@@ -1,6 +1,5 @@
 /**
- * Create Prisma tables on remote Turso using the same DDL as ensureAuthSchema.
- * Used when `prisma db push` is awkward with the libSQL adapter.
+ * Create Distro tables on remote Turso (same DDL as ensureAuthSchema).
  */
 import { createClient } from "@libsql/client";
 import { readFileSync, existsSync } from "node:fs";

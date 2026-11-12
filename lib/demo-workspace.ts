@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "crypto";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 export const DEMO_USER_EMAIL = "demo@distro.app";
 export const DEMO_ACCOUNT_IDENTIFIER = "demo_fb_user_42";
@@ -22,7 +22,7 @@ export async function ensureDemoWorkspace(): Promise<{
   accountId: string;
   channelCount: number;
 }> {
-  const user = await prisma.user.upsert({
+  const user = await db.user.upsert({
     where: { email: DEMO_USER_EMAIL },
     update: {},
     create: {
@@ -31,7 +31,7 @@ export async function ensureDemoWorkspace(): Promise<{
     },
   });
 
-  let account = await prisma.connectedAccount.findFirst({
+  let account = await db.connectedAccount.findFirst({
     where: {
       userId: user.id,
       platformName: { in: ["facebook", "FACEBOOK"] },
@@ -40,7 +40,7 @@ export async function ensureDemoWorkspace(): Promise<{
   });
 
   if (!account) {
-    account = await prisma.connectedAccount.create({
+    account = await db.connectedAccount.create({
       data: {
         userId: user.id,
         platformName: "FACEBOOK",
@@ -54,14 +54,14 @@ export async function ensureDemoWorkspace(): Promise<{
       },
     });
   } else if (account.status !== "ACTIVE") {
-    account = await prisma.connectedAccount.update({
+    account = await db.connectedAccount.update({
       where: { id: account.id },
       data: { status: "ACTIVE", lastSyncedAt: new Date() },
     });
   }
 
   // Remove any leftover seed/mock channels for this account
-  await prisma.channel.deleteMany({
+  await db.channel.deleteMany({
     where: {
       accountId: account.id,
       OR: [
@@ -72,7 +72,7 @@ export async function ensureDemoWorkspace(): Promise<{
     },
   });
 
-  const channelCount = await prisma.channel.count({
+  const channelCount = await db.channel.count({
     where: { accountId: account.id },
   });
 

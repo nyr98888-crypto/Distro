@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import {
   toScheduledPostDTO,
   type ScheduledPostRow,
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       );
     }
 
-    const existing = await prisma.scheduledPost.findFirst({
+    const existing = await db.scheduledPost.findFirst({
       where: { id, userId },
     });
     if (!existing) {
@@ -58,13 +58,13 @@ export async function POST(request: NextRequest, ctx: Ctx) {
     }
 
     if (parsed.data.replace) {
-      await prisma.publishedGroupPost.deleteMany({
+      await db.publishedGroupPost.deleteMany({
         where: { scheduledPostId: id },
       });
     }
 
     for (const result of parsed.data.results) {
-      const match = await prisma.publishedGroupPost.findFirst({
+      const match = await db.publishedGroupPost.findFirst({
         where: {
           scheduledPostId: id,
           OR: [
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       });
 
       if (match) {
-        await prisma.publishedGroupPost.update({
+        await db.publishedGroupPost.update({
           where: { id: match.id },
           data: {
             groupId: result.groupId || match.groupId,
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest, ctx: Ctx) {
           },
         });
       } else {
-        await prisma.publishedGroupPost.create({
+        await db.publishedGroupPost.create({
           data: {
             scheduledPostId: id,
             groupId: result.groupId,
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       }
     }
 
-    const post = await prisma.scheduledPost.findFirst({
+    const post = await db.scheduledPost.findFirst({
       where: { id },
       include: { publishedPosts: { orderBy: { createdAt: "desc" } } },
     });

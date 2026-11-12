@@ -105,7 +105,7 @@ export function PostComposer({
   }, [composer.text, composer.scheduleTime]);
 
   const activeChannels = React.useMemo(
-    () => channels.filter((c) => c.isActive),
+    () => (Array.isArray(channels) ? channels : []).filter((c) => c?.isActive),
     [channels]
   );
 
@@ -122,7 +122,8 @@ export function PostComposer({
         if (!res.ok || !data.success || !data.post || cancelled) return;
         const post = data.post;
         setName(post.name || "");
-        setSelectedIds(new Set(post.targetGroups.map((g) => g.id)));
+        const groups = Array.isArray(post.targetGroups) ? post.targetGroups : [];
+        setSelectedIds(new Set(groups.map((g) => g?.id).filter(Boolean) as string[]));
         setEditingId(post.id);
         setExistingImageUrl(post.imageUrl || "");
         const local = (() => {
@@ -145,7 +146,9 @@ export function PostComposer({
           imageDataUrl: post.imageUrl || null,
           scheduleTime: local,
           scheduleType: post.scheduleType,
-          daysOfWeek: post.daysOfWeek.length ? post.daysOfWeek : [6],
+          daysOfWeek: Array.isArray(post.daysOfWeek) && post.daysOfWeek.length
+            ? post.daysOfWeek
+            : [6],
           runTime: post.runTime || "07:00",
           intervalDelay: post.delaySeconds || 60,
           endMode,

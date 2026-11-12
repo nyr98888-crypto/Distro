@@ -1,44 +1,9 @@
 import "server-only";
 
+import { assertDatabaseConfigured } from "@/lib/libsql-config";
 import { turso } from "@/lib/turso";
 
-const PLACEHOLDER_TOKEN = "paste-your-turso-token-here";
-
-/**
- * Validate Turso / DATABASE env before auth queries.
- * Throws with a clear message when remote libSQL is misconfigured.
- */
-export function assertDatabaseConfigured(): void {
-  const url = (
-    process.env.TURSO_DATABASE_URL ||
-    process.env.DATABASE_URL ||
-    ""
-  ).trim();
-
-  if (!url) {
-    throw new Error(
-      "Database is not configured: set TURSO_DATABASE_URL or DATABASE_URL"
-    );
-  }
-
-  const isRemote =
-    url.startsWith("libsql://") ||
-    (url.startsWith("https://") && /turso\.io/i.test(url));
-
-  if (!isRemote) return;
-
-  const token = (
-    process.env.TURSO_AUTH_TOKEN ||
-    process.env.DATABASE_AUTH_TOKEN ||
-    ""
-  ).trim();
-
-  if (!token || token === PLACEHOLDER_TOKEN) {
-    throw new Error(
-      "Database is not configured: TURSO_AUTH_TOKEN is missing or still the placeholder value"
-    );
-  }
-}
+export { assertDatabaseConfigured };
 
 let schemaReady: Promise<void> | null = null;
 

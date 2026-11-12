@@ -1,8 +1,9 @@
 import "server-only";
 
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { ensureAuthSchema } from "@/lib/ensure-auth-schema";
+import { upsertFacebookAccount } from "@/lib/facebook-accounts";
 
 const GRAPH_VERSION = "v21.0";
 const STATE_COOKIE = "distro_fb_oauth_state";
@@ -71,6 +72,7 @@ export function buildFacebookAuthUrl(
     redirect_uri: redirectUri,
     state,
     response_type: "code",
+    // Groups may require App Review; profile+email always work for Login.
     scope: "email,public_profile",
   });
   return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
@@ -137,6 +139,85 @@ export async function exchangeFacebookCode(
   };
 }
 
+type GraphGroup = {
+  id: string;
+  name?: string;
+  privacy?: string;
+  member_count?: number;
+};
+
+/**
+ * Best-effort group sync via Graph API.
+ * Many consumer apps cannot list joined groups without App Review —
+ * failures are logged and ignored so login still succeeds.
+ */
+export async function syncGroupsFromGraph(
+  accountId: string,
+  oauthAccessToken: string
+): Promise<number> {
+  try {
+    const url = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/me/groups`
+    );
+    url.searchParams.set("fields", "id,name,privacy,member_count");
+    url.searchParams.set("limit", "100");
+    url.searchParams.set("access_token", oauthAccessToken);
+
+    const res = await fetch(url.toString(), { method: "GET" });
+    const json = (await res.json()) as {
+      data?: GraphGroup[];
+      error?: { message?: string };
+    };
+    if (!res.ok || json.error) {
+      console.warn(
+        "[facebook-oauth] groups sync skipped:",
+        json.error?.message || `HTTP ${res.status}`
+      );
+      return 0;
+    }
+
+    const groups = json.data || [];
+    let upserted = 0;
+    for (const group of groups) {
+      if (!group.id) continue;
+      const name = (group.name || `Group ${group.id}`).trim();
+      const existing = await db.channel.findFirst({
+        where: { accountId, externalId: group.id },
+        select: { id: true },
+      });
+      if (existing) {
+        await db.channel.update({
+          where: { id: existing.id },
+          data: {
+            name,
+            memberCount: group.member_count ?? 0,
+            isActive: true,
+            url: `https://www.facebook.com/groups/${group.id}`,
+          },
+        });
+      } else {
+        await db.channel.create({
+          data: {
+            accountId,
+            externalId: group.id,
+            name,
+            memberCount: group.member_count ?? 0,
+            isActive: true,
+            url: `https://www.facebook.com/groups/${group.id}`,
+            categoryTags: "[]",
+            isApprovalRequired: false,
+          },
+        });
+      }
+      upserted += 1;
+    }
+    return upserted;
+  } catch (error) {
+    console.warn("[facebook-oauth] groups sync error:", error);
+    return 0;
+  }
+}
+
 /**
  * Find-or-create a Distro user from Facebook Login profile.
  * Links by facebookId first, then by email.
@@ -145,7 +226,7 @@ export async function upsertUserFromFacebook(profile: {
   id: string;
   name?: string;
   email?: string;
-}): Promise<{ id: string; email: string }> {
+}): Promise<{ id: string; email: string; name: string }> {
   await ensureAuthSchema();
 
   const facebookId = profile.id;
@@ -154,13 +235,13 @@ export async function upsertUserFromFacebook(profile: {
     (profile.email || "").trim().toLowerCase() ||
     `fb_${facebookId}@users.distro.app`;
 
-  const existingByFb = await prisma.user.findFirst({
+  const existingByFb = await db.user.findFirst({
     where: { facebookId },
     select: { id: true, email: true, name: true },
   });
 
   if (existingByFb) {
-    const updated = await prisma.user.update({
+    const updated = await db.user.update({
       where: { id: existingByFb.id },
       data: {
         name: name || existingByFb.name,
@@ -168,36 +249,79 @@ export async function upsertUserFromFacebook(profile: {
           ? { email: profile.email.trim().toLowerCase() }
           : {}),
       },
-      select: { id: true, email: true },
+      select: { id: true, email: true, name: true },
     });
     return updated;
   }
 
-  const existingByEmail = await prisma.user.findUnique({
+  const existingByEmail = await db.user.findUnique({
     where: { email },
     select: { id: true, email: true, name: true, facebookId: true },
   });
 
   if (existingByEmail) {
-    const updated = await prisma.user.update({
+    const updated = await db.user.update({
       where: { id: existingByEmail.id },
       data: {
         facebookId,
         name: name || existingByEmail.name,
       },
-      select: { id: true, email: true },
+      select: { id: true, email: true, name: true },
     });
     return updated;
   }
 
-  const created = await prisma.user.create({
+  const created = await db.user.create({
     data: {
       email,
       facebookId,
       name,
       passwordHash: null,
     },
-    select: { id: true, email: true },
+    select: { id: true, email: true, name: true },
   });
   return created;
+}
+
+/**
+ * Full web login: User + ConnectedAccount + optional Graph groups.
+ * No Chrome extension required.
+ */
+export async function completeFacebookWebLogin(input: {
+  profile: FacebookProfile;
+  accessToken: string;
+}): Promise<{
+  userId: string;
+  accountId: string;
+  groupCount: number;
+}> {
+  await ensureAuthSchema();
+
+  const user = await upsertUserFromFacebook(input.profile);
+  const facebookId = input.profile.id;
+  const displayName = (input.profile.name || user.name || "").trim();
+  const avatarUrl = `https://graph.facebook.com/${facebookId}/picture?type=large`;
+
+  const account = await upsertFacebookAccount({
+    userId: user.id,
+    facebookId,
+    name: displayName || `Facebook ${facebookId.slice(-4)}`,
+    avatarUrl,
+    oauthAccessToken: input.accessToken,
+    source: "facebook-oauth",
+    makeActive: true,
+  });
+
+  const groupCount = await syncGroupsFromGraph(account.id, input.accessToken);
+
+  await db.connectedAccount.update({
+    where: { id: account.id },
+    data: { lastSyncedAt: new Date() },
+  });
+
+  return {
+    userId: user.id,
+    accountId: account.id,
+    groupCount,
+  };
 }

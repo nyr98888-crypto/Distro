@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { getActiveAccountId } from "@/lib/channels";
 import { calculateNextRun } from "@/lib/schedule-engine";
 import {
@@ -52,10 +52,12 @@ export function campaignToWorkerPayload(row: ScheduledPostRow) {
     image_url: dto.imageUrl,
     whatsapp_phone: whatsapp?.phone || "",
     whatsapp_message: whatsapp?.message || "",
-    target_group_ids: dto.targetGroups.map((g) => g.id),
-    target_groups: dto.targetGroups,
+    target_group_ids: (Array.isArray(dto.targetGroups) ? dto.targetGroups : []).map(
+      (g: any) => g?.id
+    ).filter(Boolean),
+    target_groups: Array.isArray(dto.targetGroups) ? dto.targetGroups : [],
     schedule_type: toWorkerScheduleType(dto.scheduleType),
-    target_days: dto.daysOfWeek,
+    target_days: Array.isArray(dto.daysOfWeek) ? dto.daysOfWeek : [],
     run_time: dto.runTime,
     status: toWorkerStatus(dto.status),
     delay_seconds: dto.delaySeconds,
@@ -74,7 +76,7 @@ export async function touchDeviceWorker(opts: {
   if (!accountId) return null;
 
   const now = new Date();
-  return prisma.deviceWorker.upsert({
+  return db.deviceWorker.upsert({
     where: { accountId },
     create: {
       accountId,
@@ -92,7 +94,7 @@ export async function listQueuedCampaignsForWorker(
   userId: string,
   now = new Date()
 ) {
-  return prisma.scheduledPost.findMany({
+  return db.scheduledPost.findMany({
     where: {
       userId,
       isActive: true,

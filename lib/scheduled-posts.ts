@@ -1,4 +1,5 @@
 import { parseStringArray } from "@/lib/json-fields";
+import { asArray, asString, safeIso } from "@/lib/safe";
 import type { ScheduleType } from "@/lib/schedule-engine";
 
 export const SCHEDULED_POST_STATUSES = [
@@ -168,7 +169,7 @@ export function parseTargetGroups(raw: string): ScheduledGroupRef[] {
     const parsed: unknown = JSON.parse(raw || "[]");
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .map((item) => {
+      .map((item: any) => {
         if (typeof item === "string") {
           return { id: item, name: item };
         }
@@ -189,7 +190,7 @@ export function parseTargetGroups(raw: string): ScheduledGroupRef[] {
       })
       .filter((g): g is ScheduledGroupRef => Boolean(g));
   } catch {
-    return parseStringArray(raw).map((id) => ({ id, name: id }));
+    return parseStringArray(raw).map((id: any) => ({ id, name: id }));
   }
 }
 
@@ -198,8 +199,8 @@ export function parseDaysOfWeek(raw: string): number[] {
     const parsed: unknown = JSON.parse(raw || "[]");
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .map((n) => Number(n))
-      .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
+      .map((n: any) => Number(n))
+      .filter((n: any) => Number.isInteger(n) && n >= 0 && n <= 6);
   } catch {
     return [];
   }
@@ -214,8 +215,8 @@ export function cadenceLabelHe(
   if (post.status === "paused") return "מושהה";
   if (!post.isActive) return "לא פעיל";
   if (post.scheduleType === "recurring") {
-    const days = post.daysOfWeek
-      .map((d) => ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"][d] || "")
+    const days = asArray(post?.daysOfWeek)
+      .map((d: any) => ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"][d] || "")
       .filter(Boolean)
       .join(", ");
     return `רץ כל ${days || "יום"} ב־${post.runTime || "07:00"}`;
@@ -232,46 +233,58 @@ export function cadenceLabelHe(
 export function toPublishedGroupPostDTO(
   row: NonNullable<ScheduledPostRow["publishedPosts"]>[number]
 ): PublishedGroupPostDTO {
+  const now = new Date().toISOString();
   return {
-    id: row.id,
-    groupId: row.groupId,
-    groupName: row.groupName,
-    groupExternalId: row.groupExternalId,
-    postUrl: row.postUrl,
-    postFbId: row.postFbId,
-    status: row.status,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    id: asString(row?.id),
+    groupId: asString(row?.groupId),
+    groupName: asString(row?.groupName),
+    groupExternalId: asString(row?.groupExternalId),
+    postUrl: asString(row?.postUrl),
+    postFbId: asString(row?.postFbId),
+    status: asString(row?.status, "live"),
+    createdAt: safeIso(row?.createdAt, now) || now,
+    updatedAt: safeIso(row?.updatedAt, now) || now,
   };
 }
 
 export function toScheduledPostDTO(row: ScheduledPostRow): ScheduledPostDTO {
+  const now = new Date().toISOString();
+  const scheduledTime =
+    safeIso(row?.scheduledTime, now) || now;
   return {
-    id: row.id,
-    name: row.name,
-    content: row.content,
-    imageUrl: row.imageUrl,
-    targetGroups: parseTargetGroups(row.targetGroups),
-    scheduledTime: row.scheduledTime.toISOString(),
-    delaySeconds: row.delaySeconds,
-    status: row.status as ScheduledPostStatus,
-    errorMessage: row.errorMessage,
-    scheduleType: (row.scheduleType === "recurring"
+    id: asString(row?.id),
+    name: asString(row?.name),
+    content: asString(row?.content),
+    imageUrl: asString(row?.imageUrl),
+    targetGroups: parseTargetGroups(
+      typeof row?.targetGroups === "string"
+        ? row.targetGroups
+        : JSON.stringify(row?.targetGroups ?? [])
+    ),
+    scheduledTime,
+    delaySeconds: Number(row?.delaySeconds ?? 60) || 60,
+    status: (asString(row?.status, "pending") as ScheduledPostStatus) || "pending",
+    errorMessage: asString(row?.errorMessage),
+    scheduleType: (row?.scheduleType === "recurring"
       ? "recurring"
-      : row.scheduleType === "immediate"
+      : row?.scheduleType === "immediate"
         ? "immediate"
         : "once") as ScheduleType,
-    daysOfWeek: parseDaysOfWeek(row.daysOfWeek),
-    runTime: row.runTime || "07:00",
-    endDate: row.endDate ? row.endDate.toISOString() : null,
-    maxRuns: row.maxRuns,
-    runsCount: row.runsCount,
-    isActive: row.isActive,
-    nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
-    executionMode: row.executionMode === "cloud" ? "cloud" : "extension",
-    publishedPosts: (row.publishedPosts || []).map(toPublishedGroupPostDTO),
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    daysOfWeek: parseDaysOfWeek(
+      typeof row?.daysOfWeek === "string"
+        ? row.daysOfWeek
+        : JSON.stringify(row?.daysOfWeek ?? [])
+    ),
+    runTime: asString(row?.runTime, "07:00") || "07:00",
+    endDate: safeIso(row?.endDate, null),
+    maxRuns: row?.maxRuns == null ? null : Number(row.maxRuns),
+    runsCount: Number(row?.runsCount ?? 0) || 0,
+    isActive: Boolean(row?.isActive),
+    nextRunAt: safeIso(row?.nextRunAt, null),
+    executionMode: row?.executionMode === "cloud" ? "cloud" : "extension",
+    publishedPosts: asArray(row?.publishedPosts).map(toPublishedGroupPostDTO),
+    createdAt: safeIso(row?.createdAt, now) || now,
+    updatedAt: safeIso(row?.updatedAt, now) || now,
   };
 }
 

@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { CampaignsDashboard } from "@/components/dashboard/campaigns-dashboard";
-import { DevLoginButton } from "@/components/dashboard/dev-login-button";
 import { getAuthenticatedUserId } from "@/lib/auth";
 import {
   getActiveAccountId,
@@ -13,11 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CampaignsPage() {
   const userId = await getAuthenticatedUserId();
-  const allowDevLogin =
-    process.env.NODE_ENV !== "production" ||
-    process.env.ALLOW_DEV_LOGIN === "true";
-
-  if (!userId && !allowDevLogin) {
+  if (!userId) {
     redirect("/signin");
   }
 
@@ -26,12 +21,10 @@ export default async function CampaignsPage() {
   let userName = "משתמש";
   let avatarUrl = "";
 
-  if (userId) {
+  try {
     accountId = await getActiveAccountId(userId);
-    if (accountId) {
-      channels = await listChannelsForAccount(accountId);
-    }
-    const accounts = await listFacebookAccounts(userId);
+    channels = accountId ? await listChannelsForAccount(accountId) : [];
+    const accounts = (await listFacebookAccounts(userId)) || [];
     const active =
       accounts.find((a) => a.id === accountId) ||
       accounts.find((a) => a.isActive) ||
@@ -41,27 +34,24 @@ export default async function CampaignsPage() {
       userName = active.name || "משתמש";
       avatarUrl = active.avatarUrl || "";
     }
+  } catch (error) {
+    console.error("[dashboard/campaigns] bootstrap", error);
   }
-
-  const needsLogin = !userId || !accountId;
 
   return (
     <div className="space-y-4">
-      {needsLogin && allowDevLogin && (
-        <DevLoginButton autoLogin={process.env.NODE_ENV === "development"} />
-      )}
       <Suspense
         fallback={
           <div className="py-20 text-center text-sm text-slate-500">
-            טוען לוח קמפיינים…
+            טוען…
           </div>
         }
       >
         <CampaignsDashboard
-          accountId={accountId}
-          channels={channels}
           userName={userName}
           avatarUrl={avatarUrl}
+          accountId={accountId}
+          channels={channels}
         />
       </Suspense>
     </div>

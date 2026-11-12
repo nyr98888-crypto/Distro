@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setSessionCookie } from "@/lib/auth";
 import { verifyHandoffToken } from "@/lib/extension-handoff";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 /**
  * GET /api/auth/extension-handoff?token=...
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(fallback);
   }
 
-  const user = await prisma.user.findUnique({
+  const user = await db.user.findUnique({
     where: { id: userId },
     select: { id: true },
   });

@@ -4,7 +4,6 @@ import {
   listChannelsForAccount,
 } from "@/lib/channels";
 import { getAuthenticatedUserId } from "@/lib/auth";
-import { DevLoginButton } from "@/components/dashboard/dev-login-button";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { ChannelsClient } from "./channels-client";
 
@@ -12,25 +11,22 @@ export const dynamic = "force-dynamic";
 
 export default async function ChannelsPage() {
   const userId = await getAuthenticatedUserId();
-  const allowDevLogin =
-    process.env.NODE_ENV !== "production" ||
-    process.env.ALLOW_DEV_LOGIN === "true";
 
-  if (!userId && !allowDevLogin) {
+  if (!userId) {
     redirect("/signin");
   }
 
   let accountId: string | null = null;
   let channels: Awaited<ReturnType<typeof listChannelsForAccount>> = [];
 
-  if (userId) {
+  try {
     accountId = await getActiveAccountId(userId);
-    if (accountId) {
-      channels = await listChannelsForAccount(accountId);
-    }
+    channels = accountId ? await listChannelsForAccount(accountId) : [];
+  } catch (error) {
+    console.error("[dashboard/channels] bootstrap", error);
   }
 
-  const needsLogin = !userId || !accountId;
+  const safeChannels = Array.isArray(channels) ? channels : [];
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -40,17 +36,20 @@ export default async function ChannelsPage() {
         subtitleEn="Sync and manage your target groups for distribution"
       />
 
-      {needsLogin && allowDevLogin && (
-        <DevLoginButton autoLogin={process.env.NODE_ENV === "development"} />
-      )}
-
       {userId && !accountId && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          אין חשבון מחובר פעיל. התחברו או סנכרנו סשן דרך התוסף.
+          החשבון מחובר, אך עדיין אין פרופיל פייסבוק שמור. התחברו מחדש עם פייסבוק.
         </div>
       )}
 
-      <ChannelsClient accountId={accountId} initialChannels={channels} />
+      {accountId && safeChannels.length === 0 && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          אין קבוצות עדיין. Meta מגבילה גישה לקבוצות ב-Graph API לחלק מהאפליקציות —
+          אפשר להוסיף קבוצות ידנית או לבקש הרשאות Groups ב-App Review.
+        </div>
+      )}
+
+      <ChannelsClient accountId={accountId} initialChannels={safeChannels} />
     </div>
   );
 }

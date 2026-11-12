@@ -5,8 +5,6 @@ const nextConfig: NextConfig = {
   serverExternalPackages: [
     "@libsql/client",
     "@libsql/isomorphic-ws",
-    "@prisma/adapter-libsql",
-    "@prisma/client",
     "@sparticuz/chromium-min",
     "bullmq",
     "ioredis",

@@ -9,7 +9,7 @@ import {
   type FbCookie,
 } from "@/lib/facebook-accounts";
 import { getActiveAccountId } from "@/lib/channels";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 const groupSchema = z.object({
   id: z.string().regex(/^\d{5,}$/, "Group id must be numeric"),
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
 
     let account =
       preferredAccountId
-        ? await prisma.connectedAccount.findFirst({
+        ? await db.connectedAccount.findFirst({
             where: { id: preferredAccountId, userId },
           })
         : null;
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     if (!account) {
       const activeId = await getActiveAccountId(userId, preferredAccountId);
       if (activeId) {
-        account = await prisma.connectedAccount.findFirst({
+        account = await db.connectedAccount.findFirst({
           where: { id: activeId, userId },
         });
       }
@@ -156,12 +156,12 @@ export async function POST(request: NextRequest) {
         cookies: nextCookies,
       });
 
-      await prisma.connectedAccount.updateMany({
+      await db.connectedAccount.updateMany({
         where: { userId },
         data: { isActive: false },
       });
 
-      account = await prisma.connectedAccount.update({
+      account = await db.connectedAccount.update({
         where: { id: account.id },
         data: {
           ...(facebookId ? { identifier: facebookId } : {}),
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
       const groupName = sanitizeGroupName(group.name);
       if (!groupName) continue;
 
-      const existing = await prisma.channel.findFirst({
+      const existing = await db.channel.findFirst({
         where: { accountId: account.id, externalId: group.id },
       });
 
@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
         `https://www.facebook.com/groups/${group.id}`;
 
       if (existing) {
-        await prisma.channel.update({
+        await db.channel.update({
           where: { id: existing.id },
           data: {
             name: groupName,
@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
           },
         });
       } else {
-        await prisma.channel.create({
+        await db.channel.create({
           data: {
             accountId: account.id,
             externalId: group.id,
@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (syncedExternalIds.length > 0) {
-      await prisma.channel.updateMany({
+      await db.channel.updateMany({
         where: {
           accountId: account.id,
           externalId: { notIn: syncedExternalIds },
@@ -240,7 +240,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Drop leftover mock rows for this account
-    await prisma.channel.deleteMany({
+    await db.channel.deleteMany({
       where: {
         accountId: account.id,
         OR: [

@@ -1,11 +1,11 @@
-import { PrismaClient } from "@prisma/client";
+import { db } from "@/lib/db";
 
-const prisma = new PrismaClient();
+
 
 async function main() {
-  await prisma.connectedAccount.updateMany({ data: { isActive: false } });
+  await db.connectedAccount.updateMany({ data: { isActive: false } });
 
-  const real = await prisma.connectedAccount.findFirst({
+  const real = await db.connectedAccount.findFirst({
     where: {
       identifier: { not: "demo_fb_user_42" },
       status: { not: "DELETED" },
@@ -18,7 +18,7 @@ async function main() {
     return;
   }
 
-  const updated = await prisma.connectedAccount.update({
+  const updated = await db.connectedAccount.update({
     where: { id: real.id },
     data: {
       isActive: true,
@@ -41,7 +41,7 @@ async function main() {
     updated.avatarUrl
   );
 
-  const left = await prisma.channel.count({
+  const left = await db.channel.count({
     where: { accountId: updated.id, isActive: true },
   });
   console.log("Active channels for account:", left);
@@ -53,5 +53,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await db.$disconnect();
   });

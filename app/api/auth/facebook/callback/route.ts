@@ -5,8 +5,8 @@ import {
   REDIRECT_COOKIE,
   STATE_COOKIE,
   buildFacebookRedirectUri,
+  completeFacebookWebLogin,
   exchangeFacebookCode,
-  upsertUserFromFacebook,
   verifyOAuthState,
 } from "@/lib/facebook-oauth";
 
@@ -40,11 +40,8 @@ function redirectToLogin(
 
 /**
  * GET /api/auth/facebook/callback
- * Meta OAuth redirect — upsert User, set session cookie, enter dashboard.
- *
- * Valid OAuth Redirect URIs in Meta:
- *   https://distro-auu6.vercel.app/api/auth/facebook/callback
- *   http://localhost:3000/api/auth/facebook/callback
+ * Meta OAuth → Turso User + ConnectedAccount + session cookie → dashboard.
+ * Does not require the Chrome extension.
  */
 export async function GET(request: NextRequest) {
   const origin = requestOrigin(request);
@@ -83,12 +80,15 @@ export async function GET(request: NextRequest) {
     }
 
     await ensureAuthSchema();
-    const { profile } = await exchangeFacebookCode(code, storedRedirect);
-    const user = await upsertUserFromFacebook(profile);
+    const { profile, accessToken } = await exchangeFacebookCode(
+      code,
+      storedRedirect
+    );
+    const login = await completeFacebookWebLogin({ profile, accessToken });
 
     const dest = new URL("/dashboard", origin);
     const res = NextResponse.redirect(dest);
-    setSessionCookie(res, user.id);
+    setSessionCookie(res, login.userId);
     clearOAuthCookies(res);
     return res;
   } catch (error) {

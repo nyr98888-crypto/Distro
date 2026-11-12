@@ -2,7 +2,7 @@ import "server-only";
 
 import { Queue, type JobsOptions } from "bullmq";
 import IORedis from "ioredis";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 // ─── Redis connection ─────────────────────────────────────────────────────────
 
@@ -95,7 +95,7 @@ export async function schedulePublishCampaign(
     throw new Error("At least one channelId is required");
   }
 
-  const campaign = await prisma.campaign.findUnique({
+  const campaign = await db.campaign.findUnique({
     where: { id: campaignId },
     select: { id: true, status: true },
   });
@@ -104,7 +104,7 @@ export async function schedulePublishCampaign(
     throw new Error(`Campaign not found: ${campaignId}`);
   }
 
-  const channels = await prisma.channel.findMany({
+  const channels = await db.channel.findMany({
     where: {
       id: { in: channelIds },
       isActive: true,
@@ -147,7 +147,7 @@ export async function schedulePublishCampaign(
       ? "PENDING_APPROVAL"
       : "PENDING";
 
-    const publishJob = await prisma.publishJob.create({
+    const publishJob = await db.publishJob.create({
       data: {
         campaignId,
         channelId: channel.id,
@@ -184,7 +184,7 @@ export async function schedulePublishCampaign(
 
   // Transition campaign out of DRAFT once jobs are scheduled
   if (campaign.status === "DRAFT" || campaign.status === "PAUSED") {
-    await prisma.campaign.update({
+    await db.campaign.update({
       where: { id: campaignId },
       data: { status: "SCHEDULED" },
     });
@@ -201,7 +201,7 @@ export async function schedulePublishCampaign(
 export async function promoteToUrgent(campaignId: string): Promise<{
   promoted: number;
 }> {
-  const jobs = await prisma.publishJob.findMany({
+  const jobs = await db.publishJob.findMany({
     where: {
       campaignId,
       status: { in: ["PENDING", "PENDING_APPROVAL"] },
@@ -219,9 +219,9 @@ export async function promoteToUrgent(campaignId: string): Promise<{
   }
 
   // Persist priority bump
-  await prisma.publishJob.updateMany({
+  await db.publishJob.updateMany({
     where: {
-      id: { in: jobs.map((j) => j.id) },
+      id: { in: jobs.map((j: any) => j.id) },
     },
     data: { priority: 1 },
   });
@@ -287,7 +287,7 @@ export function getPublishWorkerOptions() {
  * `priority ASC, scheduledFor ASC`.
  */
 export async function listPendingJobsForDispatch(accountId?: string) {
-  return prisma.publishJob.findMany({
+  return db.publishJob.findMany({
     where: {
       status: "PENDING",
       ...(accountId ? { accountId } : {}),

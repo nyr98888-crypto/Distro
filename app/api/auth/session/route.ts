@@ -1,7 +1,8 @@
 import { getAuthenticatedUserId } from "@/lib/auth";
 import { corsJson, corsPreflight } from "@/lib/cors";
 import { createHandoffToken } from "@/lib/extension-handoff";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { safeIso } from "@/lib/safe";
 
 export async function OPTIONS() {
   return corsPreflight();
@@ -23,7 +24,7 @@ export async function GET() {
       });
     }
 
-    const account = await prisma.connectedAccount.findFirst({
+    const account = await db.connectedAccount.findFirst({
       where: { userId, status: "ACTIVE" },
       orderBy: { lastSyncedAt: "desc" },
       select: {
@@ -40,7 +41,7 @@ export async function GET() {
       connected,
       authenticated: true,
       channelCount,
-      lastSyncedAt: account?.lastSyncedAt?.toISOString() ?? null,
+      lastSyncedAt: safeIso(account?.lastSyncedAt, null),
       extensionToken: createHandoffToken(userId),
     });
   } catch (error) {

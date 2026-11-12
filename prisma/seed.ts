@@ -1,7 +1,7 @@
-import { PrismaClient } from "@prisma/client";
+import { db } from "@/lib/db";
 import { createHash } from "crypto";
 
-const prisma = new PrismaClient();
+
 
 function hashPassword(plain: string): string {
   return createHash("sha256").update(plain).digest("hex");
@@ -10,7 +10,7 @@ function hashPassword(plain: string): string {
 async function main() {
   console.log("Seeding DISTRO database (user only — no mock groups)…");
 
-  const user = await prisma.user.upsert({
+  const user = await db.user.upsert({
     where: { email: "demo@distro.app" },
     update: {},
     create: {
@@ -22,7 +22,7 @@ async function main() {
   console.log(`User: ${user.email} (${user.id})`);
 
   // Purge any leftover mock / non-numeric Facebook groups
-  const deleted = await prisma.channel.deleteMany({
+  const deleted = await db.channel.deleteMany({
     where: {
       OR: [
         { externalId: { startsWith: "fb_15_group_" } },
@@ -43,5 +43,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await db.$disconnect();
   });

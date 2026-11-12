@@ -14,19 +14,19 @@ const FEATURE_ICONS = [Users, Sparkles, Shield] as const;
 
 function LandingInner() {
   const { dir, locale, t } = useI18n();
-  const support = supportHref(locale);
+  const support = supportHref(locale || "he") || "mailto:support@distro.app";
   const features = [
     {
-      title: t("landingFeature1Title"),
-      body: t("landingFeature1Body"),
+      title: t("landingFeature1Title") || "",
+      body: t("landingFeature1Body") || "",
     },
     {
-      title: t("landingFeature2Title"),
-      body: t("landingFeature2Body"),
+      title: t("landingFeature2Title") || "",
+      body: t("landingFeature2Body") || "",
     },
     {
-      title: t("landingFeature3Title"),
-      body: t("landingFeature3Body"),
+      title: t("landingFeature3Title") || "",
+      body: t("landingFeature3Body") || "",
     },
   ];
 

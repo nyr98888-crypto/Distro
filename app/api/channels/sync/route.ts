@@ -10,7 +10,7 @@ import { encryptSession } from "@/lib/crypto";
 import { createHandoffToken } from "@/lib/extension-handoff";
 import { parseStoredSession } from "@/lib/facebook-accounts";
 import { hashPassword } from "@/lib/password";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 const groupSchema = z.object({
   id: z.string().regex(/^\d{5,}$/, "Group id must be numeric"),
@@ -100,7 +100,7 @@ async function resolveUserId(
   const existing = await getAuthenticatedUserId();
   if (existing) return existing;
 
-  const linked = await prisma.connectedAccount.findFirst({
+  const linked = await db.connectedAccount.findFirst({
     where: {
       platformName: { in: [PLATFORM, "facebook"] },
       identifier: fbUserId,
@@ -111,7 +111,7 @@ async function resolveUserId(
 
   // Always bind sync to a real Facebook-derived user — never dump into demo mocks
   const email = `fb_${fbUserId}@distro.app`;
-  const user = await prisma.user.upsert({
+  const user = await db.user.upsert({
     where: { email },
     update: {},
     create: {
@@ -167,12 +167,12 @@ export async function POST(request: NextRequest) {
     const userId = await resolveUserId(fbUserId, fbUserName);
     const now = new Date();
 
-    await prisma.connectedAccount.updateMany({
+    await db.connectedAccount.updateMany({
       where: { userId },
       data: { isActive: false },
     });
 
-    let account = await prisma.connectedAccount.findFirst({
+    let account = await db.connectedAccount.findFirst({
       where: {
         userId,
         identifier: fbUserId,
@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
       );
 
     if (account) {
-      account = await prisma.connectedAccount.update({
+      account = await db.connectedAccount.update({
         where: { id: account.id },
         data: {
           accessToken,
@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
         },
       });
     } else {
-      account = await prisma.connectedAccount.create({
+      account = await db.connectedAccount.create({
         data: {
           userId,
           platformName: PLATFORM,
@@ -233,7 +233,7 @@ export async function POST(request: NextRequest) {
 
     for (const group of groups) {
       const name = sanitizeGroupName(group.name);
-      const existing = await prisma.channel.findFirst({
+      const existing = await db.channel.findFirst({
         where: {
           accountId: account.id,
           externalId: group.id,
@@ -247,7 +247,7 @@ export async function POST(request: NextRequest) {
           : (existing?.memberCount ?? group.memberCount ?? 0);
 
       if (existing) {
-        await prisma.channel.update({
+        await db.channel.update({
           where: { id: existing.id },
           data: {
             name,
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
           },
         });
       } else {
-        await prisma.channel.create({
+        await db.channel.create({
           data: {
             accountId: account.id,
             externalId: group.id,
@@ -275,7 +275,7 @@ export async function POST(request: NextRequest) {
 
     // Deactivate groups that disappeared from the full scroll scrape
     if (syncedExternalIds.length > 0) {
-      await prisma.channel.updateMany({
+      await db.channel.updateMany({
         where: {
           accountId: account.id,
           externalId: { notIn: syncedExternalIds },

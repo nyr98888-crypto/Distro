@@ -1,4 +1,5 @@
 import { parseStringArray } from "@/lib/json-fields";
+import { asString, safeIso } from "@/lib/safe";
 
 export type GroupPresetDTO = {
   id: string;
@@ -17,11 +18,12 @@ export type GroupPresetRow = {
 };
 
 export function toGroupPresetDTO(row: GroupPresetRow): GroupPresetDTO {
+  const now = new Date().toISOString();
   return {
-    id: row.id,
-    name: row.name,
-    groupIds: parseStringArray(row.groupIds),
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    id: asString(row?.id),
+    name: asString(row?.name),
+    groupIds: parseStringArray(row?.groupIds ?? "[]"),
+    createdAt: safeIso(row?.createdAt, now) || now,
+    updatedAt: safeIso(row?.updatedAt, now) || now,
   };
 }

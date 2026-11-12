@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
 import { getActiveAccountId } from "@/lib/channels";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import {
   toGroupPresetDTO,
   type GroupPresetRow,
@@ -17,7 +17,7 @@ export async function GET() {
   try {
     const userId = await requireAuth();
     const accountId = await getActiveAccountId(userId);
-    const presets = await prisma.groupPreset.findMany({
+    const presets = await db.groupPreset.findMany({
       where: {
         userId,
         OR: accountId
@@ -26,9 +26,23 @@ export async function GET() {
       },
       orderBy: { updatedAt: "desc" },
     });
+    const list = Array.isArray(presets) ? presets : [];
     return NextResponse.json({
       success: true,
-      presets: presets.map((p) => toGroupPresetDTO(p as GroupPresetRow)),
+      presets: list.map((p: any) => {
+        try {
+          return toGroupPresetDTO(p as GroupPresetRow);
+        } catch (err) {
+          console.error("[group-presets/GET] dto", err);
+          return {
+            id: String(p?.id || ""),
+            name: String(p?.name || ""),
+            groupIds: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+        }
+      }),
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -67,7 +81,7 @@ export async function POST(request: NextRequest) {
     }
 
     const accountId = await getActiveAccountId(userId);
-    const preset = await prisma.groupPreset.create({
+    const preset = await db.groupPreset.create({
       data: {
         userId,
         accountId: accountId || null,

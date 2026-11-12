@@ -1,6 +1,6 @@
-import { PrismaClient } from "@prisma/client";
+import { db } from "@/lib/db";
 
-const prisma = new PrismaClient();
+
 
 const MOCK_EXTERNAL_PREFIXES = ["fb_15_group_", "fb_il_", "fb_group_"];
 const MOCK_NAMES = [
@@ -12,7 +12,7 @@ const MOCK_NAMES = [
 ];
 
 async function main() {
-  const all = await prisma.channel.findMany({
+  const all = await db.channel.findMany({
     select: { id: true, externalId: true, name: true },
   });
 
@@ -30,7 +30,7 @@ async function main() {
   }
 
   const ids = toDelete.map((r) => r.id);
-  const deleted = await prisma.channel.deleteMany({
+  const deleted = await db.channel.deleteMany({
     where: { id: { in: ids } },
   });
   console.log(`Deleted ${deleted.count} mock/non-numeric groups:`);
@@ -45,5 +45,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await db.$disconnect();
   });

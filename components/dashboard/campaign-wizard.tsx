@@ -172,14 +172,16 @@ export function CampaignWizard({
   const { t, dir } = useI18n();
 
   const activeChannels = React.useMemo(
-    () => channels.filter((c) => c.isActive),
+    () => (Array.isArray(channels) ? channels : []).filter((c) => c?.isActive),
     [channels]
   );
 
   const filteredGroups = React.useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return activeChannels;
-    return activeChannels.filter((g) => g.name.toLowerCase().includes(q));
+    return activeChannels.filter((g) =>
+      (g?.name || "").toLowerCase().includes(q)
+    );
   }, [activeChannels, searchQuery]);
 
   React.useEffect(() => {
@@ -195,7 +197,9 @@ export function CampaignWizard({
           success: boolean;
           presets?: GroupPresetDTO[];
         };
-        if (res.ok && data.success) setPresets(data.presets || []);
+        if (res.ok && data.success) {
+          setPresets(Array.isArray(data.presets) ? data.presets : []);
+        }
       } catch {
         /* ignore */
       }
@@ -220,7 +224,8 @@ export function CampaignWizard({
         setContent(stripWhatsAppFooter(post.content || ""));
         setExistingImageUrl(post.imageUrl || "");
         if (post.imageUrl) setImagePreview(post.imageUrl);
-        setSelectedIds(post.targetGroups.map((g) => g.id));
+        const groups = Array.isArray(post.targetGroups) ? post.targetGroups : [];
+        setSelectedIds(groups.map((g) => g?.id).filter(Boolean) as string[]);
         setScheduleType(
           post.scheduleType === "recurring"
             ? "recurring"
@@ -229,9 +234,10 @@ export function CampaignWizard({
               : "once"
         );
         setScheduleTime(
-          toDatetimeLocal(post.nextRunAt || post.scheduledTime)
+          toDatetimeLocal(post.nextRunAt || post.scheduledTime || "")
         );
-        setDaysOfWeek(post.daysOfWeek.length ? post.daysOfWeek : [6]);
+        const days = Array.isArray(post.daysOfWeek) ? post.daysOfWeek : [];
+        setDaysOfWeek(days.length ? days : [6]);
         setRunTime(post.runTime || "07:00");
         setDelaySeconds(post.delaySeconds || 60);
         setExecutionMode(
@@ -242,7 +248,7 @@ export function CampaignWizard({
           setMaxRuns(post.maxRuns);
         } else if (post.endDate) {
           setEndMode("end_date");
-          setEndDate(post.endDate.slice(0, 10));
+          setEndDate(String(post.endDate).slice(0, 10));
         } else {
           setEndMode("never");
         }
@@ -315,7 +321,8 @@ export function CampaignWizard({
     const preset = presets.find((p) => p.id === id);
     if (!preset) return;
     const valid = new Set(activeChannels.map((c) => c.id));
-    setSelectedIds(preset.groupIds.filter((gid) => valid.has(gid)));
+    const ids = Array.isArray(preset.groupIds) ? preset.groupIds : [];
+    setSelectedIds(ids.filter((gid) => valid.has(gid)));
   }
 
   async function savePreset() {
@@ -815,7 +822,7 @@ export function CampaignWizard({
                   <option value="">בחרו תבנית…</option>
                   {presets.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.groupIds.length})
+                      {p.name} ({(Array.isArray(p.groupIds) ? p.groupIds : []).length})
                     </option>
                   ))}
                 </select>

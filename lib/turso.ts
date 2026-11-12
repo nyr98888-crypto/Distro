@@ -1,47 +1,5 @@
-import "server-only";
-
 import { createClient, type Client } from "@libsql/client";
-
-/**
- * libSQL rejects query params on the URL (e.g. ?authToken=...).
- * Prefer TURSO_* vars; fall back to DATABASE_* used by Prisma on Vercel.
- */
-function resolveLibsqlConfig(): { url: string; authToken?: string } {
-  let url = (
-    process.env.TURSO_DATABASE_URL ||
-    process.env.DATABASE_URL ||
-    "file:./prisma/dev.db"
-  ).trim();
-
-  let authToken =
-    process.env.TURSO_AUTH_TOKEN ||
-    process.env.DATABASE_AUTH_TOKEN ||
-    undefined;
-
-  const queryIndex = url.indexOf("?");
-  if (queryIndex !== -1) {
-    const params = new URLSearchParams(url.slice(queryIndex + 1));
-    authToken =
-      authToken ||
-      params.get("authToken") ||
-      params.get("auth_token") ||
-      undefined;
-    url = url.slice(0, queryIndex);
-  }
-
-  if (url.startsWith("https://") && /turso\.io$/i.test(new URL(url).host)) {
-    url = `libsql://${new URL(url).host}`;
-  }
-
-  if (!authToken || authToken === "paste-your-turso-token-here") {
-    authToken = undefined;
-  }
-
-  return {
-    url,
-    ...(url.startsWith("libsql://") && authToken ? { authToken } : {}),
-  };
-}
+import { resolveLibsqlConfig } from "@/lib/libsql-config";
 
 const globalForTurso = globalThis as unknown as {
   turso: Client | undefined;

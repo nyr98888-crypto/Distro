@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { calculateNextRun } from "@/lib/schedule-engine";
 import { getActiveAccountId } from "@/lib/channels";
+import { ensureAuthSchema } from "@/lib/ensure-auth-schema";
 import {
   toScheduledPostDTO,
   type ScheduledPostRow,
@@ -49,6 +50,7 @@ const createSchema = z.object({
 /** GET /api/scheduled-posts */
 export async function GET(request: NextRequest) {
   try {
+    await ensureAuthSchema();
     const userId = await requireAuth();
     const accountId = await getActiveAccountId(userId);
     const { searchParams } = new URL(request.url);
@@ -58,10 +60,12 @@ export async function GET(request: NextRequest) {
 
     const lifecycle = searchParams.get("lifecycle"); // active | paused | completed | all
 
-    const posts = await prisma.scheduledPost.findMany({
+    const posts = await db.scheduledPost.findMany({
       where: {
         userId,
-        ...(accountId ? { accountId } : { accountId: null }),
+        // Prefer active account when present; otherwise return all user posts
+        // (new Facebook users often have an account with zero campaigns yet).
+        ...(accountId ? { accountId } : {}),
         ...(status ? { status } : {}),
         ...(lifecycle === "active"
           ? { isActive: true, status: { in: ["pending", "running"] } }
@@ -99,9 +103,38 @@ export async function GET(request: NextRequest) {
       orderBy: [{ updatedAt: "desc" }, { scheduledTime: "asc" }],
     });
 
+    const safePosts = Array.isArray(posts) ? posts : [];
     return NextResponse.json({
       success: true,
-      posts: posts.map((p) => toScheduledPostDTO(p as ScheduledPostRow)),
+      posts: safePosts.map((p: any) => {
+        try {
+          return toScheduledPostDTO(p as ScheduledPostRow);
+        } catch (err) {
+          console.error("[scheduled-posts/GET] dto", err);
+          return toScheduledPostDTO({
+            id: String((p as { id?: string })?.id || ""),
+            name: "",
+            content: "",
+            imageUrl: "",
+            targetGroups: "[]",
+            scheduledTime: new Date(),
+            delaySeconds: 60,
+            status: "pending",
+            errorMessage: "",
+            scheduleType: "once",
+            daysOfWeek: "[]",
+            runTime: "07:00",
+            endDate: null,
+            maxRuns: null,
+            runsCount: 0,
+            isActive: false,
+            nextRunAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            publishedPosts: [],
+          });
+        }
+      }),
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -190,7 +223,7 @@ export async function POST(request: NextRequest) {
         ? new Date(data.scheduledTime)
         : nextRunAt;
 
-    const post = await prisma.scheduledPost.create({
+    const post = await db.scheduledPost.create({
       data: {
         userId,
         accountId: accountId || null,

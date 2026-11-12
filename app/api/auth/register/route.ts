@@ -8,7 +8,7 @@ import {
 } from "@/lib/ensure-auth-schema";
 import { createHandoffToken } from "@/lib/extension-handoff";
 import { hashPassword } from "@/lib/password";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     const email = parsed.data.email.trim().toLowerCase();
     const { password } = parsed.data;
 
-    const existing = await prisma.user.findUnique({
+    const existing = await db.user.findUnique({
       where: { email },
       select: { id: true },
     });
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await prisma.user.create({
+    const user = await db.user.create({
       data: {
         email,
         passwordHash: hashPassword(password),

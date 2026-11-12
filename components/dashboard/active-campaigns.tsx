@@ -57,17 +57,25 @@ export function ActiveCampaigns({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/scheduled-posts");
-      const data = (await res.json()) as {
-        success: boolean;
+      const res = await fetch("/api/scheduled-posts").catch(() => null);
+      const text = res ? await res.text().catch(() => "") : "";
+      type PostsPayload = {
+        success?: boolean;
         posts?: ScheduledPostDTO[];
         error?: string;
       };
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "טעינת הקמפיינים נכשלה");
+      let data: PostsPayload | null = null;
+      try {
+        data = text ? (JSON.parse(text) as PostsPayload) : null;
+      } catch {
+        data = null;
       }
-      setPosts(data.posts || []);
+      setPosts(Array.isArray(data?.posts) ? data.posts : []);
+      if (res && (!res.ok || data?.success === false)) {
+        setError(data?.error || "טעינת הקמפיינים נכשלה");
+      }
     } catch (err) {
+      setPosts([]);
       setError(err instanceof Error ? err.message : "שגיאה בטעינה");
     } finally {
       setLoading(false);
@@ -223,7 +231,11 @@ export function ActiveCampaigns({
   }
 
   async function liveUpdate(post: ScheduledPostDTO, mode: "text" | "replace_repost") {
-    if (!post.publishedPosts.some((p) => p.status === "live" || p.status === "updated")) {
+    if (
+      !(Array.isArray(post.publishedPosts) ? post.publishedPosts : []).some(
+        (p) => p?.status === "live" || p?.status === "updated"
+      )
+    ) {
       setError("אין פוסטים חיים שמורים — יש לפרסם קודם לקבוצות דרך DISTRO");
       return;
     }
@@ -392,7 +404,7 @@ export function ActiveCampaigns({
                       {paused
                         ? "מושהה"
                         : campaign.isActive
-                          ? `${cadenceLabelHe(campaign)} • ${campaign.targetGroups.length} קבוצות`
+                          ? `${cadenceLabelHe(campaign)} • ${(campaign.targetGroups || []).length} קבוצות`
                           : statusLabelHe(campaign.status)}
                     </span>
                     <span
@@ -474,7 +486,7 @@ export function ActiveCampaigns({
 
                 <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#e4e6eb] pt-3">
                   <span className="text-[11px] text-slate-500">
-                    {campaign.targetGroups.length} קבוצות יעד
+                    {(campaign.targetGroups || []).length} קבוצות יעד
                     {liveCount > 0 ? ` · ${liveCount} פוסטים חיים` : ""}
                   </span>
                   <div className="mr-auto flex flex-wrap gap-2">

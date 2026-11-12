@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { calculateNextRun } from "@/lib/schedule-engine";
 import {
   CATCHUP_WINDOW_MS,
@@ -27,7 +27,7 @@ export function isMissedWithinCatchup(
 }
 
 export async function listDueCampaigns(now = new Date()) {
-  return prisma.scheduledPost.findMany({
+  return db.scheduledPost.findMany({
     where: {
       isActive: true,
       status: { in: ["pending", "failed"] },
@@ -46,7 +46,7 @@ export async function listCatchupCampaignsForUser(
   now = new Date()
 ) {
   const windowStart = new Date(now.getTime() - CATCHUP_WINDOW_MS);
-  return prisma.scheduledPost.findMany({
+  return db.scheduledPost.findMany({
     where: {
       userId,
       isActive: true,
@@ -68,7 +68,7 @@ export function resolveExecutionMode(
 
 /** Advance runs_count + next_run_at after a successful broadcast. */
 export async function completeCampaignRun(postId: string, userId?: string) {
-  const existing = await prisma.scheduledPost.findFirst({
+  const existing = await db.scheduledPost.findFirst({
     where: {
       id: postId,
       ...(userId ? { userId } : {}),
@@ -102,7 +102,7 @@ export async function completeCampaignRun(postId: string, userId?: string) {
     scheduleType === "immediate" ||
     (existing.maxRuns != null && runsCount >= existing.maxRuns);
 
-  const updated = await prisma.scheduledPost.update({
+  const updated = await db.scheduledPost.update({
     where: { id: postId },
     data: {
       runsCount,
@@ -141,7 +141,7 @@ export async function dispatchCloudFallback(campaign: {
       "[hybrid] DISTRO_CLOUD_WORKER_URL unset — queued cloud job locally",
       campaign.id
     );
-    await prisma.scheduledPost.update({
+    await db.scheduledPost.update({
       where: { id: campaign.id },
       data: {
         status: "pending",
@@ -165,7 +165,7 @@ export async function dispatchCloudFallback(campaign: {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    await prisma.scheduledPost.update({
+    await db.scheduledPost.update({
       where: { id: campaign.id },
       data: {
         status: "failed",
@@ -175,7 +175,7 @@ export async function dispatchCloudFallback(campaign: {
     return { dispatched: false, reason: "worker_error" as const };
   }
 
-  await prisma.scheduledPost.update({
+  await db.scheduledPost.update({
     where: { id: campaign.id },
     data: { status: "running", executionMode: "cloud", errorMessage: "" },
   });

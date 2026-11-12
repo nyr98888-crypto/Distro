@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
 import { completeCampaignRun } from "@/lib/hybrid-scheduler";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import {
   campaignToWorkerPayload,
   fromWorkerStatus,
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existing = await prisma.scheduledPost.findFirst({
+    const existing = await db.scheduledPost.findFirst({
       where: { id: campaignId, userId },
     });
     if (!existing) {
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     if (parsed.data.groupResults?.length) {
       for (const g of parsed.data.groupResults) {
         if (!g.postUrl) continue;
-        await prisma.publishedGroupPost.create({
+        await db.publishedGroupPost.create({
           data: {
             scheduledPostId: campaignId,
             groupId: g.groupId || "",
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-      const row = await prisma.scheduledPost.findFirst({
+      const row = await db.scheduledPost.findFirst({
         where: { id: campaignId },
         include: { publishedPosts: true },
       });
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const updated = await prisma.scheduledPost.update({
+    const updated = await db.scheduledPost.update({
       where: { id: campaignId },
       data: {
         status: internalStatus,

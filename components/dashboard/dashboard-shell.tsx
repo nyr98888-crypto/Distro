@@ -15,7 +15,12 @@ import {
 import { ExtensionInstallButton } from "@/components/dashboard/extension-install-button";
 import { FacebookAccountBar } from "@/components/dashboard/facebook-account-bar";
 import { SidebarHeader } from "@/components/dashboard/sidebar-header";
-import { I18nProvider, LanguageToggle, useI18n } from "@/lib/i18n";
+import {
+  I18nProvider,
+  LanguageToggle,
+  useI18n,
+  type TranslationKey,
+} from "@/lib/i18n";
 import { supportHref } from "@/lib/support";
 import { cn } from "@/lib/utils";
 
@@ -61,27 +66,25 @@ type DashboardShellProps = {
   avatarUrl?: string | null;
 };
 
-function ShellInner({
-  children,
+type SidebarProps = {
+  pathname: string;
+  isRtl: boolean;
+  userName?: string | null;
+  avatarUrl?: string | null;
+  support: string;
+  t: (key: TranslationKey) => string;
+};
+
+/** Separate component so desktop + mobile each get their own hook instances. */
+function DashboardSidebar({
+  pathname,
+  isRtl,
   userName,
   avatarUrl,
-}: DashboardShellProps) {
-  const pathname = usePathname() || "";
-  const [mobileOpen, setMobileOpen] = React.useState(false);
-  const { dir, locale, t } = useI18n();
-  const isRtl = dir === "rtl";
-  const support = supportHref(locale);
-
-  React.useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
-  React.useEffect(() => {
-    document.documentElement.lang = locale;
-    document.documentElement.dir = dir;
-  }, [locale, dir]);
-
-  const sidebar = (
+  support,
+  t,
+}: SidebarProps) {
+  return (
     <aside
       className={cn(
         "flex h-full w-[260px] flex-col border-slate-200 bg-white text-slate-700",
@@ -155,6 +158,36 @@ function ShellInner({
       </div>
     </aside>
   );
+}
+
+function ShellInner({
+  children,
+  userName,
+  avatarUrl,
+}: DashboardShellProps) {
+  const pathname = usePathname() || "";
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  const { dir, locale, t } = useI18n();
+  const isRtl = dir === "rtl";
+  const support = supportHref(locale || "he") || "mailto:support@distro.app";
+
+  React.useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  React.useEffect(() => {
+    document.documentElement.lang = locale;
+    document.documentElement.dir = dir;
+  }, [locale, dir]);
+
+  const sidebarProps: SidebarProps = {
+    pathname,
+    isRtl,
+    userName,
+    avatarUrl,
+    support,
+    t,
+  };
 
   return (
     <div
@@ -162,18 +195,18 @@ function ShellInner({
       lang={locale}
       className="flex min-h-screen bg-[#F8FAFC] font-sans text-slate-900"
     >
-      {/* Desktop fixed sidebar */}
+      {/* Desktop fixed sidebar — own component instance */}
       <div
         className={cn(
           "fixed inset-y-0 z-40 hidden md:block",
           isRtl ? "right-0" : "left-0"
         )}
       >
-        {sidebar}
+        <DashboardSidebar {...sidebarProps} />
       </div>
 
-      {/* Mobile drawer */}
-      {mobileOpen && (
+      {/* Mobile drawer — separate instance (never reuse one React element) */}
+      {mobileOpen ? (
         <div className="fixed inset-0 z-50 md:hidden">
           <button
             type="button"
@@ -187,10 +220,10 @@ function ShellInner({
               isRtl ? "right-0" : "left-0"
             )}
           >
-            {sidebar}
+            <DashboardSidebar {...sidebarProps} />
           </div>
         </div>
-      )}
+      ) : null}
 
       <div
         className={cn(
@@ -198,7 +231,6 @@ function ShellInner({
           isRtl ? "md:pr-[260px]" : "md:pl-[260px]"
         )}
       >
-        {/* Top header with language toggle (top-left visually) */}
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200/80 bg-[#F8FAFC]/90 px-4 py-3 backdrop-blur sm:px-6">
           <div className="flex items-center gap-3">
             <button

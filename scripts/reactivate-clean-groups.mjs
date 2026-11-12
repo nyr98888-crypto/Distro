@@ -1,6 +1,6 @@
-import { PrismaClient } from "@prisma/client";
+import { db } from "@/lib/db";
 
-const prisma = new PrismaClient();
+
 
 const NOISE = [
   /\s*פעילות אחרונה[\s\S]*$/i,
@@ -24,7 +24,7 @@ function cleanName(raw) {
 }
 
 async function main() {
-  const rows = await prisma.channel.findMany({
+  const rows = await db.channel.findMany({
     where: { externalId: { not: { startsWith: "fb_" } } },
   });
 
@@ -32,7 +32,7 @@ async function main() {
   let deleted = 0;
   for (const row of rows) {
     if (!/^\d{5,}$/.test(row.externalId)) {
-      await prisma.channel.delete({ where: { id: row.id } });
+      await db.channel.delete({ where: { id: row.id } });
       deleted += 1;
       continue;
     }
@@ -43,11 +43,11 @@ async function main() {
       name.length < 2 ||
       /תויגו על ידי|לא נקראו|כולם תויגו/i.test(name)
     ) {
-      await prisma.channel.delete({ where: { id: row.id } });
+      await db.channel.delete({ where: { id: row.id } });
       deleted += 1;
       continue;
     }
-    await prisma.channel.update({
+    await db.channel.update({
       where: { id: row.id },
       data: { name, isActive: true },
     });
@@ -63,5 +63,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await db.$disconnect();
   });

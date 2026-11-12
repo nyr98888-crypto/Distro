@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
 import { encryptSession } from "@/lib/crypto";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 const cookieSchema = z.object({
   name: z.string().min(1),
@@ -67,13 +67,13 @@ export async function POST(request: NextRequest) {
     const accessToken = encryptSession(JSON.stringify(sessionCookies));
     const now = new Date();
 
-    const existing = await prisma.connectedAccount.findFirst({
+    const existing = await db.connectedAccount.findFirst({
       where: { userId, platformName, identifier },
       select: { id: true },
     });
 
     const account = existing
-      ? await prisma.connectedAccount.update({
+      ? await db.connectedAccount.update({
           where: { id: existing.id },
           data: {
             accessToken,
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
           },
           select: { id: true },
         })
-      : await prisma.connectedAccount.create({
+      : await db.connectedAccount.create({
           data: {
             userId,
             platformName,

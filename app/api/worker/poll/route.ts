@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     });
 
     const rows = await listQueuedCampaignsForWorker(userId);
-    const campaigns = rows.map((r) =>
+    const campaigns = rows.map((r: any) =>
       campaignToWorkerPayload(r as ScheduledPostRow)
     );
 
@@ -46,7 +46,10 @@ export async function GET(request: NextRequest) {
         ? {
             id: worker.id,
             account_id: worker.accountId,
-            last_seen_at: worker.lastSeenAt.toISOString(),
+            last_seen_at:
+              typeof worker.lastSeenAt?.toISOString === "function"
+                ? worker.lastSeenAt.toISOString()
+                : String(worker.lastSeenAt ?? new Date().toISOString()),
             is_online: worker.isOnline,
           }
         : null,
@@ -84,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     await touchDeviceWorker({ userId, accountId, isOnline: true });
     const rows = await listQueuedCampaignsForWorker(userId);
-    const campaigns = rows.map((r) =>
+    const campaigns = rows.map((r: any) =>
       campaignToWorkerPayload(r as ScheduledPostRow)
     );
 

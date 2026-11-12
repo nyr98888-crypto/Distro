@@ -319,7 +319,6 @@ function format(
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = React.useState<Locale>("he");
-  const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {
     try {
@@ -328,7 +327,6 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
-    setReady(true);
   }, []);
 
   const setLocale = React.useCallback((next: Locale) => {
@@ -342,7 +340,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
   const t = React.useCallback(
     (key: TranslationKey, vars?: Record<string, string | number>) =>
-      format(dictionary[locale][key], vars),
+      format(dictionary[locale][key] ?? dictionary.he[key] ?? String(key), vars),
     [locale]
   );
 
@@ -356,17 +354,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     [locale, setLocale, t]
   );
 
-  // Avoid flashing wrong dir before localStorage is read
-  if (!ready) {
-    return (
-      <I18nContext.Provider value={value}>
-        <div dir="rtl" lang="he" className="min-h-screen bg-[#F8FAFC]">
-          {children}
-        </div>
-      </I18nContext.Provider>
-    );
-  }
-
+  // Keep a single stable provider tree (no conditional wrappers).
   return (
     <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
   );

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { hashPassword } from "@/lib/password";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 /** Chrome Web Store reviewer credentials (also documented in extension notes). */
 export const REVIEWER_EMAIL = "reviewer@distro.app";
@@ -16,7 +16,7 @@ export async function ensureReviewerWorkspace(): Promise<{
   accountId: string;
   channelCount: number;
 }> {
-  const user = await prisma.user.upsert({
+  const user = await db.user.upsert({
     where: { email: REVIEWER_EMAIL },
     update: {
       passwordHash: hashPassword(REVIEWER_PASSWORD),
@@ -27,7 +27,7 @@ export async function ensureReviewerWorkspace(): Promise<{
     },
   });
 
-  let account = await prisma.connectedAccount.findFirst({
+  let account = await db.connectedAccount.findFirst({
     where: {
       userId: user.id,
       platformName: "FACEBOOK",
@@ -36,7 +36,7 @@ export async function ensureReviewerWorkspace(): Promise<{
   });
 
   if (!account) {
-    account = await prisma.connectedAccount.create({
+    account = await db.connectedAccount.create({
       data: {
         userId: user.id,
         platformName: "FACEBOOK",
@@ -50,13 +50,13 @@ export async function ensureReviewerWorkspace(): Promise<{
       },
     });
   } else if (account.status !== "ACTIVE") {
-    account = await prisma.connectedAccount.update({
+    account = await db.connectedAccount.update({
       where: { id: account.id },
       data: { status: "ACTIVE", lastSyncedAt: new Date() },
     });
   }
 
-  await prisma.channel.deleteMany({
+  await db.channel.deleteMany({
     where: {
       accountId: account.id,
       OR: [
@@ -67,7 +67,7 @@ export async function ensureReviewerWorkspace(): Promise<{
     },
   });
 
-  const channelCount = await prisma.channel.count({
+  const channelCount = await db.channel.count({
     where: { accountId: account.id },
   });
 

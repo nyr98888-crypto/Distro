@@ -1,9 +1,9 @@
-import { PrismaClient } from "@prisma/client";
+import { db } from "@/lib/db";
 
-const prisma = new PrismaClient();
+
 
 async function main() {
-  const ch = await prisma.channel.findMany({
+  const ch = await db.channel.findMany({
     select: {
       id: true,
       accountId: true,
@@ -13,7 +13,7 @@ async function main() {
     },
   });
   console.log("channels", JSON.stringify(ch, null, 2));
-  const ac = await prisma.connectedAccount.findMany({
+  const ac = await db.connectedAccount.findMany({
     select: {
       id: true,
       identifier: true,
@@ -31,5 +31,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await db.$disconnect();
   });

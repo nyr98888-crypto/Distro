@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import {
   toGroupPresetDTO,
   type GroupPresetRow,
@@ -36,7 +36,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       );
     }
 
-    const existing = await prisma.groupPreset.findFirst({
+    const existing = await db.groupPreset.findFirst({
       where: { id, userId },
     });
     if (!existing) {
@@ -46,7 +46,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       );
     }
 
-    const preset = await prisma.groupPreset.update({
+    const preset = await db.groupPreset.update({
       where: { id },
       data: {
         ...(parsed.data.name !== undefined
@@ -80,7 +80,7 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
   try {
     const userId = await requireAuth();
     const { id } = await ctx.params;
-    const existing = await prisma.groupPreset.findFirst({
+    const existing = await db.groupPreset.findFirst({
       where: { id, userId },
     });
     if (!existing) {
@@ -89,7 +89,7 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
         { status: 404 }
       );
     }
-    await prisma.groupPreset.delete({ where: { id } });
+    await db.groupPreset.delete({ where: { id } });
     return NextResponse.json({ success: true, deleted: true });
   } catch (error) {
     if (error instanceof AuthError) {

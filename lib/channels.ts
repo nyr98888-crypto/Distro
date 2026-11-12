@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { parseStringArray } from "@/lib/json-fields";
 import type { ChannelDTO } from "@/lib/channels-shared";
 
@@ -13,7 +13,7 @@ export async function getActiveAccountId(
   preferredAccountId?: string | null
 ): Promise<string | null> {
   if (preferredAccountId) {
-    const preferred = await prisma.connectedAccount.findFirst({
+    const preferred = await db.connectedAccount.findFirst({
       where: {
         id: preferredAccountId,
         userId,
@@ -24,13 +24,13 @@ export async function getActiveAccountId(
     if (preferred) return preferred.id;
   }
 
-  const selected = await prisma.connectedAccount.findFirst({
+  const selected = await db.connectedAccount.findFirst({
     where: { userId, status: "ACTIVE", isActive: true },
     select: { id: true },
   });
   if (selected) return selected.id;
 
-  const account = await prisma.connectedAccount.findFirst({
+  const account = await db.connectedAccount.findFirst({
     where: { userId, status: "ACTIVE" },
     orderBy: { lastSyncedAt: "desc" },
     select: { id: true },
@@ -50,28 +50,30 @@ export function toChannelDTO(row: {
   isApprovalRequired: boolean;
   isActive: boolean;
 }): ChannelDTO {
+  const externalId = String(row?.externalId ?? "");
   const url =
-    (row.url && String(row.url).trim()) ||
-    (row.externalId
-      ? `https://www.facebook.com/groups/${row.externalId}`
+    (row?.url && String(row.url).trim()) ||
+    (externalId
+      ? `https://www.facebook.com/groups/${externalId}`
       : "");
   return {
-    id: row.id,
-    accountId: row.accountId,
-    externalId: row.externalId,
-    name: row.name,
+    id: String(row?.id ?? ""),
+    accountId: String(row?.accountId ?? ""),
+    externalId,
+    name: String(row?.name ?? ""),
     url,
-    memberCount: row.memberCount,
-    categoryTags: parseStringArray(row.categoryTags),
-    isApprovalRequired: row.isApprovalRequired,
-    isActive: row.isActive,
+    memberCount: Number(row?.memberCount) || 0,
+    categoryTags: parseStringArray(row?.categoryTags ?? "[]"),
+    isApprovalRequired: Boolean(row?.isApprovalRequired),
+    isActive: row?.isActive !== false,
   };
 }
 
 export async function listChannelsForAccount(
   accountId: string
 ): Promise<ChannelDTO[]> {
-  const rows = await prisma.channel.findMany({
+  if (!accountId) return [];
+  const rows = await db.channel.findMany({
     where: {
       accountId,
       // Real Facebook group ids are numeric — hide leftover mock/seed rows
@@ -85,7 +87,7 @@ export async function listChannelsForAccount(
     },
     orderBy: [{ isActive: "desc" }, { memberCount: "desc" }, { name: "asc" }],
   });
-  return rows
-    .filter((row) => /^\d{5,}$/.test(row.externalId))
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row: any) => /^\d{5,}$/.test(String(row?.externalId ?? "")))
     .map(toChannelDTO);
 }

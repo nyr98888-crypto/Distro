@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
 import { getActiveAccountId } from "@/lib/channels";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import {
   campaignToWorkerPayload,
   computeNextRunForCreate,
@@ -89,21 +89,21 @@ export async function POST(request: NextRequest) {
 
     let targetGroups = data.targetGroups || [];
     if ((!targetGroups.length) && data.target_group_ids?.length && accountId) {
-      const channels = await prisma.channel.findMany({
+      const channels = await db.channel.findMany({
         where: {
           accountId,
           id: { in: data.target_group_ids },
           isActive: true,
         },
       });
-      targetGroups = channels.map((c) => ({
-        id: c.id,
-        name: c.name,
-        externalId: c.externalId,
+      targetGroups = channels.map((c: Record<string, unknown>) => ({
+        id: String(c.id),
+        name: String(c.name || ""),
+        externalId: String(c.externalId || ""),
         url:
-          c.url ||
+          (typeof c.url === "string" && c.url) ||
           (c.externalId
-            ? `https://www.facebook.com/groups/${c.externalId}`
+            ? `https://www.facebook.com/groups/${String(c.externalId)}`
             : undefined),
       }));
     }
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
           }
         : null;
 
-    const post = await prisma.scheduledPost.create({
+    const post = await db.scheduledPost.create({
       data: {
         userId,
         accountId: accountId || null,

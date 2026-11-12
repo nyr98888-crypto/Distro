@@ -1,7 +1,8 @@
 import "server-only";
 
 import { decryptSession, encryptSession } from "@/lib/crypto";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { asString, safeIso } from "@/lib/safe";
 
 export type FbCookie = {
   name: string;
@@ -33,6 +34,8 @@ export function parseStoredSession(accessToken: string): {
   fbUserName?: string;
   fbAvatarUrl?: string;
   cookies?: FbCookie[];
+  oauthAccessToken?: string;
+  source?: string;
 } {
   if (!accessToken) return {};
   try {
@@ -42,6 +45,8 @@ export function parseStoredSession(accessToken: string): {
       fbUserName?: string;
       fbAvatarUrl?: string;
       cookies?: FbCookie[];
+      oauthAccessToken?: string;
+      source?: string;
     };
   } catch {
     return {};
@@ -53,22 +58,24 @@ export function encryptAccountSession(payload: {
   fbUserName: string;
   fbAvatarUrl?: string;
   cookies?: FbCookie[];
+  oauthAccessToken?: string;
+  source?: string;
 }): string {
   return encryptSession(
     JSON.stringify({
       ...payload,
-      source: "chrome-extension",
+      source: payload.source || "chrome-extension",
       lastGroupSyncAt: new Date().toISOString(),
     })
   );
 }
 
 export async function getActiveConnectedAccount(userId: string) {
-  const active = await prisma.connectedAccount.findFirst({
+  const active = await db.connectedAccount.findFirst({
     where: { userId, isActive: true, status: "ACTIVE" },
   });
   if (active) return active;
-  return prisma.connectedAccount.findFirst({
+  return db.connectedAccount.findFirst({
     where: { userId, status: "ACTIVE" },
     orderBy: { lastSyncedAt: "desc" },
   });
@@ -78,7 +85,7 @@ export async function listFacebookAccounts(
   userId: string,
   opts?: { includeCookiesForId?: string }
 ): Promise<FacebookAccountDTO[]> {
-  const rows = await prisma.connectedAccount.findMany({
+  const rows = await db.connectedAccount.findMany({
     where: {
       userId,
       platformName: { in: ["FACEBOOK", "facebook"] },
@@ -92,14 +99,21 @@ export async function listFacebookAccounts(
     },
   });
 
-  // Prefer active-channel counts
   const withCounts = await Promise.all(
-    rows.map(async (row) => {
-      const groupCount = await prisma.channel.count({
-        where: { accountId: row.id, isActive: true },
-      });
-      const stored = parseStoredSession(row.accessToken);
-      const rawName = (row.displayName || stored.fbUserName || "").trim();
+    (rows || []).map(async (row: any) => {
+      const id = asString(row?.id);
+      const identifier = asString(row?.identifier);
+      let groupCount = 0;
+      try {
+        groupCount = await db.channel.count({
+          where: { accountId: id, isActive: true },
+        });
+      } catch {
+        groupCount = Number((row as { _count?: { channels?: number } })?._count?.channels ?? 0) || 0;
+      }
+
+      const stored = parseStoredSession(asString(row?.accessToken));
+      const rawName = (asString(row?.displayName) || stored.fbUserName || "").trim();
       const looksLikeToken =
         !rawName ||
         /^t[_-]?\d/i.test(rawName) ||
@@ -109,24 +123,25 @@ export async function listFacebookAccounts(
       const safeName = looksLikeToken ? "משתמש פייסבוק" : rawName;
 
       const avatarUrl =
-        row.avatarUrl ||
+        asString(row?.avatarUrl) ||
         stored.fbAvatarUrl ||
-        (/^\d+$/.test(row.identifier)
-          ? `https://graph.facebook.com/${row.identifier}/picture?type=large`
+        (/^\d+$/.test(identifier)
+          ? `https://graph.facebook.com/${identifier}/picture?type=large`
           : "");
 
+      const now = new Date().toISOString();
       const dto: FacebookAccountDTO = {
-        id: row.id,
-        facebookId: row.identifier,
+        id,
+        facebookId: identifier,
         name: safeName,
         avatarUrl,
-        isActive: row.isActive,
-        status: row.status,
+        isActive: Boolean(row?.isActive),
+        status: asString(row?.status, "ACTIVE"),
         groupCount,
-        lastSyncedAt: row.lastSyncedAt.toISOString(),
-        createdAt: (row.createdAt ?? row.lastSyncedAt).toISOString(),
+        lastSyncedAt: safeIso(row?.lastSyncedAt, null),
+        createdAt: safeIso(row?.createdAt ?? row?.lastSyncedAt, now) || now,
       };
-      if (opts?.includeCookiesForId === row.id && stored.cookies?.length) {
+      if (opts?.includeCookiesForId === id && stored.cookies?.length) {
         dto.cookies = stored.cookies;
       }
       return dto;
@@ -137,16 +152,16 @@ export async function listFacebookAccounts(
 }
 
 export async function setActiveAccount(userId: string, accountId: string) {
-  const target = await prisma.connectedAccount.findFirst({
+  const target = await db.connectedAccount.findFirst({
     where: { id: accountId, userId },
   });
   if (!target) return null;
 
-  await prisma.connectedAccount.updateMany({
+  await db.connectedAccount.updateMany({
     where: { userId },
     data: { isActive: false },
   });
-  return prisma.connectedAccount.update({
+  return db.connectedAccount.update({
     where: { id: accountId },
     data: { isActive: true, status: "ACTIVE" },
   });
@@ -158,6 +173,8 @@ export async function upsertFacebookAccount(input: {
   name: string;
   avatarUrl?: string;
   cookies?: FbCookie[];
+  oauthAccessToken?: string;
+  source?: string;
   makeActive?: boolean;
 }) {
   const accessToken = encryptAccountSession({
@@ -165,16 +182,18 @@ export async function upsertFacebookAccount(input: {
     fbUserName: input.name,
     fbAvatarUrl: input.avatarUrl || "",
     cookies: input.cookies || [],
+    oauthAccessToken: input.oauthAccessToken,
+    source: input.source,
   });
 
   if (input.makeActive !== false) {
-    await prisma.connectedAccount.updateMany({
+    await db.connectedAccount.updateMany({
       where: { userId: input.userId },
       data: { isActive: false },
     });
   }
 
-  const existing = await prisma.connectedAccount.findFirst({
+  const existing = await db.connectedAccount.findFirst({
     where: {
       userId: input.userId,
       identifier: input.facebookId,
@@ -182,7 +201,7 @@ export async function upsertFacebookAccount(input: {
   });
 
   if (existing) {
-    return prisma.connectedAccount.update({
+    return db.connectedAccount.update({
       where: { id: existing.id },
       data: {
         displayName: input.name,
@@ -196,7 +215,7 @@ export async function upsertFacebookAccount(input: {
     });
   }
 
-  return prisma.connectedAccount.create({
+  return db.connectedAccount.create({
     data: {
       userId: input.userId,
       platformName: "FACEBOOK",
@@ -217,7 +236,7 @@ export async function saveAccountCookies(
   cookies: FbCookie[],
   profile?: { name?: string; avatarUrl?: string }
 ) {
-  const account = await prisma.connectedAccount.findFirst({
+  const account = await db.connectedAccount.findFirst({
     where: { id: accountId, userId },
   });
   if (!account) return null;
@@ -229,7 +248,7 @@ export async function saveAccountCookies(
       profile?.avatarUrl || account.avatarUrl || prev.fbAvatarUrl || "",
     cookies,
   });
-  return prisma.connectedAccount.update({
+  return db.connectedAccount.update({
     where: { id: account.id },
     data: {
       accessToken,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import {
   toScheduledPostDTO,
   type ScheduledPostRow,
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       );
     }
 
-    const existing = await prisma.scheduledPost.findFirst({
+    const existing = await db.scheduledPost.findFirst({
       where: { id, userId },
       include: {
         publishedPosts: {
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest, ctx: Ctx) {
       );
     }
 
-    const post = await prisma.scheduledPost.update({
+    const post = await db.scheduledPost.update({
       where: { id },
       data: {
         content,
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest, ctx: Ctx) {
         content: dto.content,
         imageUrl: dto.imageUrl,
         delaySeconds: dto.delaySeconds,
-        targets: dto.publishedPosts.map((p) => ({
+        targets: dto.publishedPosts.map((p: any) => ({
           id: p.id,
           groupId: p.groupId,
           groupName: p.groupName,

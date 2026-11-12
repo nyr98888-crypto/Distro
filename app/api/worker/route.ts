@@ -29,7 +29,7 @@ function normalizeCookies(raw: unknown): CookieParam[] {
   if (!Array.isArray(raw)) {
     throw new Error("cookies_json must be a JSON array");
   }
-  return raw.map((item) => {
+  return raw.map((item: any) => {
     const c = item as Record<string, unknown>;
     const name = String(c.name ?? "");
     const value = String(c.value ?? "");

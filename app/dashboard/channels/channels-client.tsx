@@ -17,7 +17,9 @@ export function ChannelsClient({
   accountId,
   initialChannels,
 }: ChannelsClientProps) {
-  const [channels, setChannels] = React.useState(initialChannels);
+  const [channels, setChannels] = React.useState(
+    Array.isArray(initialChannels) ? initialChannels : []
+  );
 
   // Derive stats — no effect / setState feedback loop
   const stats = React.useMemo(

@@ -8,7 +8,7 @@ import {
 } from "@/lib/ensure-auth-schema";
 import { createHandoffToken } from "@/lib/extension-handoff";
 import { verifyPassword } from "@/lib/password";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import {
   REVIEWER_EMAIL,
   ensureReviewerWorkspace,
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       await ensureReviewerWorkspace();
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await db.user.findUnique({
       where: { email },
       select: { id: true, passwordHash: true },
     });
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const account = await prisma.connectedAccount.findFirst({
+    const account = await db.connectedAccount.findFirst({
       where: { userId: user.id, status: "ACTIVE" },
       select: { _count: { select: { channels: true } } },
     });

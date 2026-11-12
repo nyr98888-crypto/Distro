@@ -1,6 +1,6 @@
 import { cookies, headers } from "next/headers";
 import type { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { verifyHandoffToken } from "@/lib/extension-handoff";
 
 /** Session cookie set by auth / extension sync. */
@@ -34,7 +34,7 @@ export async function getAuthenticatedUserId(): Promise<string | null> {
     return null;
   }
 
-  const user = await prisma.user.findUnique({
+  const user = await db.user.findUnique({
     where: { id: userId },
     select: { id: true },
   });

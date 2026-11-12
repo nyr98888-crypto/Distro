@@ -120,22 +120,35 @@ export function ContentCalendar({ onCreateForDate }: ContentCalendarProps) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/scheduled-posts");
-      const data = (await res.json()) as {
-        success: boolean;
+      const res = await fetch("/api/scheduled-posts").catch(() => null);
+      const text = res ? await res.text().catch(() => "") : "";
+      type PostsPayload = {
+        success?: boolean;
         posts?: ScheduledPostDTO[];
         error?: string;
       };
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "טעינת התזמונים נכשלה");
+      let data: PostsPayload | null = null;
+      try {
+        data = text ? (JSON.parse(text) as PostsPayload) : null;
+      } catch {
+        data = null;
       }
-      setPosts(data.posts || []);
-      for (const post of data.posts || []) {
-        if (post.status === "pending" && post.isActive) {
-          notifyExtensionSchedule(post);
+      const nextPosts = Array.isArray(data?.posts) ? data.posts : [];
+      setPosts(nextPosts);
+      if (res && (!res.ok || data?.success === false)) {
+        setError(data?.error || "טעינת התזמונים נכשלה");
+      }
+      for (const post of nextPosts) {
+        if (post?.status === "pending" && post?.isActive) {
+          try {
+            notifyExtensionSchedule(post);
+          } catch {
+            /* extension optional */
+          }
         }
       }
     } catch (err) {
+      setPosts([]);
       setError(err instanceof Error ? err.message : "שגיאה בטעינה");
     } finally {
       setLoading(false);
@@ -161,19 +174,19 @@ export function ContentCalendar({ onCreateForDate }: ContentCalendarProps) {
   const postsByDay = React.useMemo(() => {
     const map = new Map<string, CalendarCard[]>();
 
-    for (const post of posts) {
-      if (post.status === "cancelled" || post.status === "paused") continue;
+    for (const post of Array.isArray(posts) ? posts : []) {
+      if (!post || post.status === "cancelled" || post.status === "paused") continue;
 
       if (post.scheduleType === "recurring" && post.isActive) {
         const occurrences = expandScheduleOccurrences(
           {
             id: post.id,
             scheduleType: "recurring",
-            daysOfWeek: post.daysOfWeek,
-            runTime: post.runTime,
+            daysOfWeek: Array.isArray(post.daysOfWeek) ? post.daysOfWeek : [],
+            runTime: post.runTime || "07:00",
             endDate: post.endDate,
             maxRuns: post.maxRuns,
-            runsCount: post.runsCount,
+            runsCount: post.runsCount || 0,
             isActive: post.isActive,
           },
           rangeStart,
@@ -192,7 +205,10 @@ export function ContentCalendar({ onCreateForDate }: ContentCalendarProps) {
         continue;
       }
 
-      const d = new Date(post.nextRunAt || post.scheduledTime);
+      const rawWhen = post.nextRunAt || post.scheduledTime;
+      if (!rawWhen) continue;
+      const d = new Date(rawWhen);
+      if (Number.isNaN(d.getTime())) continue;
       if (d < rangeStart || d > rangeEnd) continue;
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
       const list = map.get(key) || [];
@@ -515,12 +531,12 @@ export function ContentCalendar({ onCreateForDate }: ContentCalendarProps) {
             </p>
 
             <p className="mb-4 text-sm text-slate-600">
-              יעדים: {selected.targetGroups.length} קבוצות · השהייה{" "}
-              {selected.delaySeconds} שנ׳
+              יעדים: {(selected.targetGroups || []).length} קבוצות · השהייה{" "}
+              {selected.delaySeconds ?? 0} שנ׳
             </p>
             <ul className="mb-4 max-h-32 space-y-1 overflow-auto text-xs text-slate-600">
-              {selected.targetGroups.map((g) => (
-                <li key={g.id}>• {g.name}</li>
+              {(selected.targetGroups || []).map((g) => (
+                <li key={g?.id || g?.name}>• {g?.name || "קבוצה"}</li>
               ))}
             </ul>
 

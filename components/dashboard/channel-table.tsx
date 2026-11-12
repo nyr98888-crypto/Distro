@@ -68,8 +68,10 @@ export function ChannelTable({
 
   const allTags = React.useMemo(() => {
     const set = new Set<string>();
-    for (const ch of channels) {
-      for (const tag of ch.categoryTags) set.add(tag);
+    for (const ch of Array.isArray(channels) ? channels : []) {
+      for (const tag of Array.isArray(ch?.categoryTags) ? ch.categoryTags : []) {
+        if (tag) set.add(tag);
+      }
     }
     return [...set].sort();
   }, [channels]);

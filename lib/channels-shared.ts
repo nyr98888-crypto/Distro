@@ -18,12 +18,15 @@ export type ChannelStats = {
   totalReach: number;
 };
 
-export function computeChannelStats(channels: ChannelDTO[]): ChannelStats {
+export function computeChannelStats(
+  channels: ChannelDTO[] | null | undefined
+): ChannelStats {
+  const list = Array.isArray(channels) ? channels : [];
   return {
-    totalChannels: channels.length,
-    activeChannels: channels.filter((c) => c.isActive).length,
-    totalReach: channels
-      .filter((c) => c.isActive)
-      .reduce((sum, c) => sum + c.memberCount, 0),
+    totalChannels: list.length,
+    activeChannels: list.filter((c) => c?.isActive).length,
+    totalReach: list
+      .filter((c) => c?.isActive)
+      .reduce((sum, c) => sum + (Number(c?.memberCount) || 0), 0),
   };
 }

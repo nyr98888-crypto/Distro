@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 const bodySchema = z.object({
   isOnline: z.boolean().optional().default(true),
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = await prisma.deviceSession.upsert({
+    const session = await db.deviceSession.upsert({
       where: { userId },
       create: {
         userId,
@@ -47,7 +47,10 @@ export async function POST(request: NextRequest) {
       success: true,
       session: {
         userId: session.userId,
-        lastExtensionPing: session.lastExtensionPing.toISOString(),
+        lastExtensionPing:
+          typeof session.lastExtensionPing?.toISOString === "function"
+            ? session.lastExtensionPing.toISOString()
+            : String(session.lastExtensionPing ?? new Date().toISOString()),
         isOnline: session.isOnline,
         extensionVersion: session.extensionVersion,
       },

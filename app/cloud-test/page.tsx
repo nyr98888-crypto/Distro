@@ -160,7 +160,7 @@ export default function DistroCloudTestPage() {
         {campaigns.length === 0 && (
           <p className="text-sm text-gray-500">No jobs yet.</p>
         )}
-        {campaigns.map((c) => (
+        {campaigns.map((c: any) => (
           <div
             key={c.id}
             className="flex items-start justify-between gap-2 rounded border p-3 text-sm"

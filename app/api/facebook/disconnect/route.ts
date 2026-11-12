@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AuthError, requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 /**
  * POST — clear Distro's cached Facebook connection + deactivate groups
@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 export async function POST() {
   try {
     const userId = await requireAuth();
-    const accounts = await prisma.connectedAccount.findMany({
+    const accounts = await db.connectedAccount.findMany({
       where: {
         userId,
         platformName: { in: ["FACEBOOK", "facebook"] },
@@ -17,13 +17,13 @@ export async function POST() {
       select: { id: true },
     });
 
-    const accountIds = accounts.map((a) => a.id);
+    const accountIds = accounts.map((a: any) => a.id);
     if (accountIds.length) {
-      await prisma.channel.updateMany({
+      await db.channel.updateMany({
         where: { accountId: { in: accountIds } },
         data: { isActive: false },
       });
-      await prisma.connectedAccount.updateMany({
+      await db.connectedAccount.updateMany({
         where: { id: { in: accountIds } },
         data: { status: "DISCONNECTED", accessToken: "" },
       });

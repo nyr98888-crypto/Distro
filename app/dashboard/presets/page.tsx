@@ -53,7 +53,7 @@ export default function PresetsPage() {
     try {
       const groupIds = groupIdsRaw
         .split(/[\s,]+/)
-        .map((s) => s.trim())
+        .map((s: any) => s.trim())
         .filter(Boolean);
       if (!name.trim() || groupIds.length === 0) {
         throw new Error("נא למלא שם ולפחות מזהה קבוצה אחד");
@@ -146,7 +146,7 @@ export default function PresetsPage() {
           </div>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {presets.map((p) => (
+            {presets.map((p: any) => (
               <li
                 key={p.id}
                 className="flex items-center justify-between gap-3 px-4 py-3"
@@ -154,7 +154,7 @@ export default function PresetsPage() {
                 <div>
                   <div className="font-semibold text-slate-900">{p.name}</div>
                   <div className="text-xs text-slate-500">
-                    {p.groupIds.length} קבוצות
+                    {(Array.isArray(p.groupIds) ? p.groupIds : []).length} קבוצות
                   </div>
                 </div>
                 <button

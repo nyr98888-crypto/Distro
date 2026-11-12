@@ -58,7 +58,9 @@ export function FacebookAccountBar({
         accounts?: FacebookAccountListItem[];
       };
       if (res.ok && data.success) {
-        setAccounts(data.accounts || []);
+        setAccounts(Array.isArray(data.accounts) ? data.accounts : []);
+      } else {
+        setAccounts([]);
       }
     } catch {
       /* ignore */
@@ -160,7 +162,7 @@ export function FacebookAccountBar({
         accounts?: FacebookAccountListItem[];
       };
       if (res.ok && data.success) {
-        setAccounts(data.accounts || []);
+        setAccounts(Array.isArray(data.accounts) ? data.accounts : []);
         setMessage("החשבון הוסר");
       }
     } finally {
@@ -168,7 +170,11 @@ export function FacebookAccountBar({
     }
   }
 
-  if (loading && accounts.length === 0) {
+  // Never early-return before the main tree — keeps hook children stable
+  // (React #310). Show a loading strip inline instead.
+  const showLoading = loading && accounts.length === 0;
+
+  if (showLoading) {
     return (
       <div
         className={cn(
@@ -202,21 +208,34 @@ export function FacebookAccountBar({
         {active ? (
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="relative shrink-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={active.avatarUrl}
-                alt=""
-                referrerPolicy="no-referrer"
-                className={cn(
-                  "h-10 w-10 rounded-full border object-cover",
-                  isLight
-                    ? "border-[#3B82F6]/40 bg-slate-100"
-                    : "border-[#3B82F6]/60 bg-slate-700"
-                )}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
+              {active.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={active.avatarUrl}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className={cn(
+                    "h-10 w-10 rounded-full border object-cover",
+                    isLight
+                      ? "border-[#3B82F6]/40 bg-slate-100"
+                      : "border-[#3B82F6]/60 bg-slate-700"
+                  )}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              ) : (
+                <span
+                  className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-full border",
+                    isLight
+                      ? "border-[#3B82F6]/40 bg-slate-100 text-slate-500"
+                      : "border-[#3B82F6]/60 bg-slate-700 text-slate-300"
+                  )}
+                >
+                  <UserRound className="h-4 w-4" />
+                </span>
+              )}
               <span
                 className={cn(
                   "absolute bottom-0 end-0 h-3 w-3 rounded-full border-2 bg-[#10B981]",

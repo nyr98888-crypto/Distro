@@ -3,7 +3,7 @@ import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
 import { detectPriority } from "@/lib/priority-detector";
 import { stringifyStringArray } from "@/lib/json-fields";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { schedulePublishCampaign } from "@/lib/queue";
 
 const mediaUrlSchema = z
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Ensure all channels belong to this user's accounts
-    const channels = await prisma.channel.findMany({
+    const channels = await db.channel.findMany({
       where: {
         id: { in: channelIds },
         isActive: true,
@@ -83,9 +83,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const ownedIds = channels.map((c) => c.id);
+    const ownedIds = channels.map((c: any) => c.id);
 
-    const campaign = await prisma.campaign.create({
+    const campaign = await db.campaign.create({
       data: {
         userId,
         name,
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Pending jobs for this campaign, ordered for dispatch
-    const pendingJobs = await prisma.publishJob.findMany({
+    const pendingJobs = await db.publishJob.findMany({
       where: {
         campaignId: campaign.id,
         status: { in: ["PENDING", "PENDING_APPROVAL"] },
@@ -156,7 +156,7 @@ export async function GET() {
   try {
     const userId = await requireAuth();
 
-    const campaigns = await prisma.campaign.findMany({
+    const campaigns = await db.campaign.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
       select: {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { calculateNextRun } from "@/lib/schedule-engine";
 import {
   SCHEDULED_POST_STATUSES,
@@ -45,7 +45,7 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
   try {
     const userId = await requireAuth();
     const { id } = await ctx.params;
-    const post = await prisma.scheduledPost.findFirst({
+    const post = await db.scheduledPost.findFirst({
       where: { id, userId },
       include: { publishedPosts: { orderBy: { createdAt: "desc" } } },
     });
@@ -96,7 +96,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       );
     }
 
-    const existing = await prisma.scheduledPost.findFirst({
+    const existing = await db.scheduledPost.findFirst({
       where: { id, userId },
     });
     if (!existing) {
@@ -166,7 +166,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       });
     }
 
-    const post = await prisma.scheduledPost.update({
+    const post = await db.scheduledPost.update({
       where: { id },
       data: {
         ...(data.name !== undefined ? { name: data.name } : {}),
@@ -214,7 +214,7 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       },
     });
 
-    const withPublished = await prisma.scheduledPost.findFirst({
+    const withPublished = await db.scheduledPost.findFirst({
       where: { id },
       include: { publishedPosts: { orderBy: { createdAt: "desc" } } },
     });
@@ -242,7 +242,7 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
   try {
     const userId = await requireAuth();
     const { id } = await ctx.params;
-    const existing = await prisma.scheduledPost.findFirst({
+    const existing = await db.scheduledPost.findFirst({
       where: { id, userId },
     });
     if (!existing) {
@@ -257,7 +257,7 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
       existing.status === "running" ||
       existing.status === "paused"
     ) {
-      const post = await prisma.scheduledPost.update({
+      const post = await db.scheduledPost.update({
         where: { id },
         data: { status: "cancelled", isActive: false, nextRunAt: null },
       });
@@ -267,7 +267,7 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
       });
     }
 
-    await prisma.scheduledPost.delete({ where: { id } });
+    await db.scheduledPost.delete({ where: { id } });
     return NextResponse.json({ success: true, deleted: true });
   } catch (error) {
     if (error instanceof AuthError) {

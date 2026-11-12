@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireAuth } from "@/lib/auth";
 import { listFacebookAccounts } from "@/lib/facebook-accounts";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -10,7 +10,7 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
   try {
     const userId = await requireAuth();
     const { id } = await ctx.params;
-    const account = await prisma.connectedAccount.findFirst({
+    const account = await db.connectedAccount.findFirst({
       where: { id, userId },
     });
     if (!account) {
@@ -20,11 +20,11 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
       );
     }
 
-    await prisma.channel.updateMany({
+    await db.channel.updateMany({
       where: { accountId: id },
       data: { isActive: false },
     });
-    await prisma.connectedAccount.update({
+    await db.connectedAccount.update({
       where: { id },
       data: {
         status: "DELETED",
@@ -35,7 +35,7 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
 
     // Promote another account if we removed the active one
     if (account.isActive) {
-      const next = await prisma.connectedAccount.findFirst({
+      const next = await db.connectedAccount.findFirst({
         where: {
           userId,
           status: "ACTIVE",
@@ -44,7 +44,7 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
         orderBy: { lastSyncedAt: "desc" },
       });
       if (next) {
-        await prisma.connectedAccount.update({
+        await db.connectedAccount.update({
           where: { id: next.id },
           data: { isActive: true },
         });

@@ -31,6 +31,7 @@ import {
 } from "@/lib/extension-bridge";
 import type { ScheduledPostDTO } from "@/lib/scheduled-posts";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
+import { asArray, safeJson } from "@/lib/safe";
 import { cn } from "@/lib/utils";
 
 type ViewMode = "table" | "calendar";
@@ -94,15 +95,16 @@ function statusPill(
 }
 
 function ScheduleCell({ post }: { post: ScheduledPostDTO }) {
-  if (post.scheduleType === "recurring") {
+  const days = Array.isArray(post?.daysOfWeek) ? post.daysOfWeek : [];
+  if (post?.scheduleType === "recurring") {
     return (
       <div className="flex flex-wrap items-center gap-1.5">
-        {post.daysOfWeek.map((d) => (
+        {days.map((d) => (
           <span
             key={d}
             className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-slate-100 px-1.5 text-[11px] font-semibold text-slate-700"
           >
-            {HE_WEEKDAY_LABELS[d]}׳
+            {HE_WEEKDAY_LABELS[d] ?? d}׳
           </span>
         ))}
         <span className="mr-1 text-xs font-medium text-slate-600" dir="ltr">
@@ -111,25 +113,34 @@ function ScheduleCell({ post }: { post: ScheduledPostDTO }) {
       </div>
     );
   }
-  if (post.scheduleType === "immediate") {
+  if (post?.scheduleType === "immediate") {
     return <span className="text-xs text-slate-600">פרסום מיידי</span>;
   }
-  const when = post.nextRunAt || post.scheduledTime;
-  return (
-    <span className="text-xs text-slate-600">
-      {when ? new Date(when).toLocaleString("he-IL") : "—"}
-    </span>
-  );
+  const when = post?.nextRunAt || post?.scheduledTime;
+  let label = "—";
+  if (when) {
+    try {
+      label = new Date(when).toLocaleString("he-IL");
+    } catch {
+      label = "—";
+    }
+  }
+  return <span className="text-xs text-slate-600">{label}</span>;
 }
 
 export function CampaignsDashboard({
-  channels: initialChannels,
+  channels: initialChannelsProp,
   accountId,
   userName,
   avatarUrl = "",
 }: CampaignsDashboardProps) {
+  // All hooks must run unconditionally at the top (React #310).
+  const { t, dir } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const initialChannels = Array.isArray(initialChannelsProp)
+    ? initialChannelsProp
+    : [];
   const [posts, setPosts] = React.useState<ScheduledPostDTO[]>([]);
   const [channels, setChannels] = React.useState<ChannelDTO[]>(initialChannels);
   const [loading, setLoading] = React.useState(true);
@@ -146,7 +157,7 @@ export function CampaignsDashboard({
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [liveGroupCount, setLiveGroupCount] = React.useState(
-    () => initialChannels.filter((c) => c.isActive).length
+    () => initialChannels.filter((c) => c?.isActive).length
   );
 
   const load = React.useCallback(async (opts?: { silent?: boolean }) => {
@@ -156,39 +167,46 @@ export function CampaignsDashboard({
     }
     try {
       const [postsRes, profileRes, channelsRes] = await Promise.all([
-        fetch("/api/scheduled-posts"),
-        fetch("/api/facebook/profile"),
-        fetch("/api/channels"),
+        fetch("/api/scheduled-posts").catch(() => null),
+        fetch("/api/facebook/profile").catch(() => null),
+        fetch("/api/channels").catch(() => null),
       ]);
-      const data = (await postsRes.json()) as {
-        success: boolean;
+      const data = await safeJson<{
+        success?: boolean;
         posts?: ScheduledPostDTO[];
         error?: string;
-      };
-      if (!postsRes.ok || !data.success) {
-        throw new Error(data.error || "טעינה נכשלה");
+      }>(postsRes);
+      // New / empty accounts: treat missing or failed payloads as empty lists.
+      setPosts(asArray(data?.posts));
+      if (postsRes && (!postsRes.ok || data?.success === false)) {
+        if (!opts?.silent) {
+          setError(data?.error || "טעינה נכשלה");
+        }
       }
-      setPosts(data.posts || []);
 
-      const chData = (await channelsRes.json().catch(() => null)) as {
+      const chData = await safeJson<{
         success?: boolean;
         channels?: ChannelDTO[];
-      } | null;
-      if (chData?.channels) {
-        setChannels(chData.channels);
-        setLiveGroupCount(
-          chData.channels.filter((c) => c.isActive !== false).length
-        );
-      }
+      }>(channelsRes);
+      const nextChannels = asArray(chData?.channels);
+      setChannels(nextChannels);
+      setLiveGroupCount(
+        nextChannels.filter((c) => c?.isActive !== false).length
+      );
 
-      const profileData = (await profileRes.json().catch(() => null)) as {
+      const profileData = await safeJson<{
         success?: boolean;
         profile?: { groupCount?: number } | null;
-      } | null;
-      if (profileData?.success && typeof profileData.profile?.groupCount === "number") {
+      }>(profileRes);
+      if (
+        profileData?.success &&
+        typeof profileData.profile?.groupCount === "number"
+      ) {
         setLiveGroupCount(profileData.profile.groupCount);
       }
     } catch (err) {
+      setPosts([]);
+      setChannels([]);
       if (!opts?.silent) {
         setError(err instanceof Error ? err.message : "שגיאה");
       }
@@ -254,31 +272,35 @@ export function CampaignsDashboard({
     setInitialWizardStep(1);
   }
 
-  const groupCount = liveGroupCount;
-  const publishedCount = posts.reduce(
-    (sum, p) => sum + (p.runsCount || 0),
+  const safePosts = Array.isArray(posts) ? posts : [];
+  const safeChannels = Array.isArray(channels) ? channels : [];
+  const groupCount = Number(liveGroupCount) || 0;
+  const publishedCount = safePosts.reduce(
+    (sum, p) => sum + (Number(p?.runsCount) || 0),
     0
   );
-  const scheduledCount = posts.filter(
+  const scheduledCount = safePosts.filter(
     (p) =>
-      p.isActive &&
-      (p.status === "pending" || p.status === "running")
+      p?.isActive &&
+      (p?.status === "pending" || p?.status === "running")
   ).length;
 
-  const filtered = React.useMemo(() => {
+  // Plain derivation (no useMemo) — safer with useSearchParams suspend/resume.
+  const filtered = (() => {
     const q = query.trim().toLowerCase();
-    if (!q) return posts;
-    return posts.filter((p) => {
+    if (!q) return safePosts;
+    return safePosts.filter((p) => {
+      const groups = Array.isArray(p?.targetGroups) ? p.targetGroups : [];
       const hay = [
-        p.name,
-        p.content,
-        ...p.targetGroups.map((g) => g.name),
+        p?.name || "",
+        p?.content || "",
+        ...groups.map((g) => g?.name || ""),
       ]
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [posts, query]);
+  })();
 
   async function patchCampaign(id: string, body: Record<string, unknown>) {
     const res = await fetch(`/api/scheduled-posts/${id}`, {
@@ -389,9 +411,10 @@ export function CampaignsDashboard({
     }
   }
 
-  const { t, dir } = useI18n();
-  const displayName =
-    userName.includes("@") ? userName.split("@")[0] : userName || "—";
+  const safeUserName = typeof userName === "string" ? userName : "";
+  const displayName = safeUserName.includes("@")
+    ? safeUserName.split("@")[0]
+    : safeUserName || "—";
 
   return (
     <div className="mx-auto max-w-6xl space-y-6" dir={dir}>
@@ -607,7 +630,7 @@ export function CampaignsDashboard({
                             {post.name || "ללא שם"}
                           </div>
                           <div className="mt-0.5 text-xs text-slate-500">
-                            {post.targetGroups.length} קבוצות יעד
+                            {(post.targetGroups || []).length} קבוצות יעד
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -718,7 +741,7 @@ export function CampaignsDashboard({
             <div className="scrollbar-none max-h-[90vh] overflow-y-auto px-4 py-4 sm:px-5">
               <CampaignWizard
                 key={wizardKey}
-                channels={channels}
+                channels={safeChannels}
                 accountId={accountId}
                 editPostId={editId}
                 initialScheduleTime={initialScheduleTime}

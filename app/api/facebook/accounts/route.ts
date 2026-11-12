@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AuthError, requireAuth } from "@/lib/auth";
+import { ensureAuthSchema } from "@/lib/ensure-auth-schema";
 import {
   listFacebookAccounts,
   upsertFacebookAccount,
@@ -31,12 +32,14 @@ const upsertSchema = z.object({
 /** GET — all Facebook accounts for the Distro user. */
 export async function GET() {
   try {
+    await ensureAuthSchema();
     const userId = await requireAuth();
-    const accounts = await listFacebookAccounts(userId);
+    const accounts = (await listFacebookAccounts(userId)) || [];
+    const list = Array.isArray(accounts) ? accounts : [];
     return NextResponse.json({
       success: true,
-      accounts,
-      activeAccountId: accounts.find((a) => a.isActive)?.id ?? null,
+      accounts: list,
+      activeAccountId: list.find((a) => a.isActive)?.id ?? null,
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -46,10 +49,12 @@ export async function GET() {
       );
     }
     console.error("[facebook/accounts/GET]", error);
-    return NextResponse.json(
-      { success: false, error: "Internal server error" },
-      { status: 500 }
-    );
+    // Empty-state safe: new users should still get a usable payload.
+    return NextResponse.json({
+      success: true,
+      accounts: [],
+      activeAccountId: null,
+    });
   }
 }
 

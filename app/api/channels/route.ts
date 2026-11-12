@@ -7,8 +7,9 @@ import {
   listChannelsForAccount,
   toChannelDTO,
 } from "@/lib/channels";
+import { ensureAuthSchema } from "@/lib/ensure-auth-schema";
 import { mergeTags, stringifyStringArray } from "@/lib/json-fields";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 /**
  * GET /api/channels?accountId=optional
@@ -16,6 +17,7 @@ import { prisma } from "@/lib/prisma";
  */
 export async function GET(request: NextRequest) {
   try {
+    await ensureAuthSchema();
     const userId = await requireAuth();
     const preferredAccountId =
       request.nextUrl.searchParams.get("accountId") ?? undefined;
@@ -110,7 +112,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const owned = await prisma.channel.findMany({
+    const owned = await db.channel.findMany({
       where: {
         id: { in: channelIds },
         accountId,
@@ -124,19 +126,19 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const updated = await prisma.$transaction(
-      owned.map((channel) => {
+    const updated = await db.$transaction(
+      owned.map((channel: any) => {
         let nextTags = channel.categoryTags;
 
         if (categoryTags !== undefined) {
           nextTags = stringifyStringArray(
-            [...new Set(categoryTags.map((t) => t.trim()).filter(Boolean))].sort()
+            [...new Set(categoryTags.map((t: any) => t.trim()).filter(Boolean))].sort()
           );
         } else if (addTags !== undefined && addTags.length > 0) {
           nextTags = mergeTags(channel.categoryTags, addTags);
         }
 
-        return prisma.channel.update({
+        return db.channel.update({
           where: { id: channel.id },
           data: {
             ...(isActive !== undefined ? { isActive } : {}),

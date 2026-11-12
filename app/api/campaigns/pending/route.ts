@@ -18,7 +18,9 @@ export async function GET() {
     const rows = await listCatchupCampaignsForUser(userId);
     return NextResponse.json({
       success: true,
-      campaigns: rows.map((r) => toScheduledPostDTO(r as ScheduledPostRow)),
+      campaigns: (rows || []).map((r: ScheduledPostRow) =>
+        toScheduledPostDTO(r)
+      ),
     });
   } catch (error) {
     if (error instanceof AuthError) {
