@@ -7,6 +7,7 @@ import {
   listChannelsForAccount,
 } from "@/lib/channels";
 import { listFacebookAccounts } from "@/lib/facebook-accounts";
+import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,16 @@ export default async function CampaignsPage() {
   let avatarUrl = "";
 
   try {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true },
+    });
+    if (user?.name?.trim()) {
+      userName = user.name.trim();
+    } else if (user?.email?.includes("@") && !user.email.startsWith("fb_")) {
+      userName = user.email.split("@")[0] || userName;
+    }
+
     accountId = await getActiveAccountId(userId);
     channels = accountId ? await listChannelsForAccount(accountId) : [];
     const accounts = (await listFacebookAccounts(userId)) || [];
@@ -31,7 +42,7 @@ export default async function CampaignsPage() {
       accounts[0] ||
       null;
     if (active) {
-      userName = active.name || "משתמש";
+      userName = active.name || userName;
       avatarUrl = active.avatarUrl || "";
     }
   } catch (error) {
