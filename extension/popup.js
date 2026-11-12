@@ -1,6 +1,6 @@
 const GROUPS_URL = "https://www.facebook.com/groups/joins/";
 
-// Production Vercel deployment — must match host_permissions in manifest.json
+// Live production only — dead hosts (distro-auu6 / distro-theta) return Vercel DEPLOYMENT_NOT_FOUND
 const PRODUCTION_API_BASE = "https://distro-ecru.vercel.app";
 const LOCAL_API_BASE = "http://localhost:3000";
 const API_BASE = PRODUCTION_API_BASE;
@@ -8,11 +8,28 @@ const API_BASE = PRODUCTION_API_BASE;
 // Must match server env DISTRO_API_KEY (Vercel)
 const DISTRO_API_KEY = "zpv9dq136kwfxcn0t285hgoeajmlryi7ub4s";
 
-const SYNC_URL = `${API_BASE}/api/channels/sync`;
+const GROUPS_SYNC_URL = `${API_BASE}/api/groups/sync`;
+const CHANNELS_SYNC_URL = `${API_BASE}/api/channels/sync`;
 const SIGN_IN_URL = `${API_BASE}/signin`;
 
 function apiBases() {
-  return [LOCAL_API_BASE, PRODUCTION_API_BASE];
+  // Prefer live production; localhost only as a silent fallback for local Next.js.
+  return [PRODUCTION_API_BASE, LOCAL_API_BASE];
+}
+
+/** Map HTTP status to a clear Hebrew popup message. */
+function hebrewSyncError(status, serverError) {
+  if (typeof serverError === "string" && serverError.trim()) {
+    if (status === 401 || /unauthorized|unauthenticated|לא מחובר/i.test(serverError)) {
+      return "יש להתחבר קודם לאתר Distro";
+    }
+    return serverError;
+  }
+  if (status === 401) return "יש להתחבר קודם לאתר Distro";
+  if (status === 404) {
+    return `כתובת השרת לא נמצאה (404). התוסף חייב לפנות ל־${PRODUCTION_API_BASE}`;
+  }
+  return `שגיאת שרת (${status})`;
 }
 
 const statusEl = document.getElementById("status");
@@ -623,32 +640,71 @@ async function syncGroups() {
     };
 
     let data = null;
-    // Prefer authenticated multi-account endpoint
+    let lastStatus = 0;
+    let lastError = "";
+
+    const groupsForApi = groups.map((g) => ({
+      facebookGroupId: String(g.id),
+      id: String(g.id),
+      name: g.name,
+      memberCount: g.memberCount,
+      url: g.url,
+    }));
+
+    // 1) Authenticated /api/groups/sync (session cookie or Bearer handoff token)
     for (const base of apiBases()) {
       try {
-        const headers = {
-          "Content-Type": "application/json",
-        };
+        const headers = { "Content-Type": "application/json" };
         if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
-        const res = await fetch(`${base}/api/facebook/groups`, {
+        const syncUrl =
+          base === API_BASE ? GROUPS_SYNC_URL : `${base}/api/groups/sync`;
+        const res = await fetch(syncUrl, {
           method: "POST",
           credentials: "include",
           headers,
-          body: JSON.stringify(groupsPayload),
+          body: JSON.stringify({ groups: groupsForApi }),
         });
         const body = await res.json().catch(() => ({}));
+        lastStatus = res.status;
+        lastError = typeof body.error === "string" ? body.error : "";
         if (res.ok && body.success) {
           data = body;
           break;
         }
+        // 401 without Distro session is expected — fall through to channels/sync
       } catch {
-        /* try next */
+        /* try next base */
       }
     }
 
-    // Fallback: legacy channels/sync with API key
+    // 2) Authenticated multi-account /api/facebook/groups
     if (!data?.success) {
-      const res = await fetch(SYNC_URL, {
+      for (const base of apiBases()) {
+        try {
+          const headers = { "Content-Type": "application/json" };
+          if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
+          const res = await fetch(`${base}/api/facebook/groups`, {
+            method: "POST",
+            credentials: "include",
+            headers,
+            body: JSON.stringify(groupsPayload),
+          });
+          const body = await res.json().catch(() => ({}));
+          lastStatus = res.status;
+          lastError = typeof body.error === "string" ? body.error : "";
+          if (res.ok && body.success) {
+            data = body;
+            break;
+          }
+        } catch {
+          /* try next */
+        }
+      }
+    }
+
+    // 3) Fallback: /api/channels/sync with API key (creates Distro user + handoff)
+    if (!data?.success) {
+      const res = await fetch(CHANNELS_SYNC_URL, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -664,8 +720,12 @@ async function syncGroups() {
         }),
       });
       data = await res.json().catch(() => ({}));
+      lastStatus = res.status;
+      lastError = typeof data.error === "string" ? data.error : "";
       if (!res.ok || !data.success) {
-        throw new Error(data.error || `שגיאת שרת (${res.status})`);
+        throw new Error(
+          hebrewSyncError(res.status || lastStatus, lastError || data.error)
+        );
       }
     }
 

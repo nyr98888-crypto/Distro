@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DISTRO - Smart Group Campaign Manager",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Schedule, manage, and broadcast your marketing posts across your joined Facebook groups directly from your browser.",
   "icons": {
     "16": "icons/icon16.png",
@@ -9,6 +9,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
+    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

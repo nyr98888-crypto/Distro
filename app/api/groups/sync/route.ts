@@ -134,14 +134,14 @@ export async function POST(request: NextRequest) {
       return corsJson(
         {
           success: false,
-          error: "No Facebook account linked — sign in with Facebook first",
+          error: "יש להתחבר קודם לאתר Distro",
           needsReauth: true,
           removedFakes,
           extensionRequired: true,
           message:
             "Install the DISTRO Chrome extension and sync from /dashboard/channels",
         },
-        { status: 404 }
+        { status: 400 }
       );
     }
 
@@ -213,7 +213,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof AuthError) {
       return corsJson(
-        { success: false, error: "Unauthorized" },
+        {
+          success: false,
+          error: "יש להתחבר קודם לאתר Distro",
+        },
         { status: 401 }
       );
     }
@@ -246,7 +249,10 @@ export async function GET() {
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json(
-        { success: false, error: "Unauthorized" },
+        {
+          success: false,
+          error: "יש להתחבר קודם לאתר Distro",
+        },
         { status: 401 }
       );
     }

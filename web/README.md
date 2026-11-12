@@ -11,4 +11,4 @@ cd ..   # repo root
 npm run build
 ```
 
-Live app: https://distro-theta.vercel.app/dashboard/channels
+Live app: https://distro-ecru.vercel.app/dashboard/channels

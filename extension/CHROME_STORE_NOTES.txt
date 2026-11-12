@@ -1,7 +1,7 @@
 ================================================================================
 DISTRO — Chrome Web Store submission pack (pass in one go)
-Production domain: https://distro-auu6.vercel.app
-Privacy policy URL: https://distro-auu6.vercel.app/privacy
+Production domain: https://distro-ecru.vercel.app
+Privacy policy URL: https://distro-ecru.vercel.app/privacy
 Support email: support@distro.app
 Visibility: Unlisted
 Category: Productivity / Workflow & Planning
@@ -41,12 +41,12 @@ KEY FEATURES:
 • Switch Facebook profiles on a shared computer without retyping passwords
 
 HOW TO USE:
-1. Install DISTRO and open https://distro-auu6.vercel.app
+1. Install DISTRO and open https://distro-ecru.vercel.app
 2. Sign in, then open Facebook and sync your groups
 3. Create a campaign, pick groups, and schedule — the extension handles posting
 
 Privacy policy:
-https://distro-auu6.vercel.app/privacy
+https://distro-ecru.vercel.app/privacy
 
 --------------------------------------------------------------------------------
 2) PRIVACY PRACTICES — paste into Developer Console
@@ -75,7 +75,7 @@ Optional user-facing alerts when a scheduled campaign that was waiting while the
 Host Permissions Justification (*://*.facebook.com/*):
 Required to access the user's joined groups directory at https://www.facebook.com/groups/joins/ to sync group lists, and to interact with the Facebook group post composer to publish user-created marketing posts locally.
 
-Host Permissions Justification (https://distro-auu6.vercel.app/*):
+Host Permissions Justification (https://distro-ecru.vercel.app/*):
 Required to communicate with the user's DISTRO dashboard API to sync group lists, receive queued campaigns (including jobs created from mobile), and report publish status. Localhost entries are for development only.
 
 Data usage checklist:
@@ -89,7 +89,7 @@ Data usage checklist:
 --------------------------------------------------------------------------------
 3) REVIEWER / TESTER INSTRUCTIONS
 --------------------------------------------------------------------------------
-1. Web Dashboard: https://distro-auu6.vercel.app/login
+1. Web Dashboard: https://distro-ecru.vercel.app/login
 2. Reviewer account:
    - Email: reviewer@distro.app
    - Password: ReviewerPass2026!

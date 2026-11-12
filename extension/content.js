@@ -1,5 +1,7 @@
 (() => {
+  // Live production — never hit dead hosts (distro-auu6 → DEPLOYMENT_NOT_FOUND)
   const API_BASE = "https://distro-ecru.vercel.app";
+  const GROUPS_SYNC_URL = `${API_BASE}/api/groups/sync`;
   const SYNC_URL = `${API_BASE}/api/channels/sync`;
   const DISTRO_API_KEY = "zpv9dq136kwfxcn0t285hgoeajmlryi7ub4s";
   const PANEL_ID = "distro-sidebar-container";
@@ -1204,6 +1206,36 @@
 
       let data = viaBg;
       if (!data?.success) {
+        const groupsForApi = groups.map((g) => ({
+          facebookGroupId: String(g.id),
+          id: String(g.id),
+          name: g.name,
+          memberCount: g.memberCount,
+          url: g.url,
+        }));
+        try {
+          const token = await new Promise((resolve) => {
+            chrome.storage.local.get(["sessionToken"], (stored) => {
+              resolve(stored.sessionToken || null);
+            });
+          });
+          const headers = { "Content-Type": "application/json" };
+          if (token) headers.Authorization = `Bearer ${token}`;
+          const groupsRes = await fetch(GROUPS_SYNC_URL, {
+            method: "POST",
+            credentials: "include",
+            headers,
+            body: JSON.stringify({ groups: groupsForApi }),
+          });
+          const groupsBody = await groupsRes.json().catch(() => ({}));
+          if (groupsRes.ok && groupsBody.success) {
+            data = groupsBody;
+          }
+        } catch {
+          /* fall through to channels/sync */
+        }
+      }
+      if (!data?.success) {
         const res = await fetch(SYNC_URL, {
           method: "POST",
           headers: {
@@ -1220,9 +1252,13 @@
         });
         data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) {
-          throw new Error(
-            data.error || viaBg?.error || `Server error (${res.status})`
-          );
+          const msg =
+            res.status === 401
+              ? "יש להתחבר קודם לאתר Distro"
+              : res.status === 404
+                ? `כתובת השרת לא נמצאה (404). השתמשו ב־${API_BASE}`
+                : data.error || viaBg?.error || `שגיאת שרת (${res.status})`;
+          throw new Error(msg);
         }
       }
 

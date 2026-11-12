@@ -1230,10 +1230,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         groups: payload.groups || [],
         cookies: cookies.length ? cookies : payload.cookies || [],
       };
-      const data = await apiFetchJson("/api/facebook/groups", {
+      const groupsForApi = (body.groups || []).map((g) => ({
+        facebookGroupId: String(g.id || g.facebookGroupId || ""),
+        id: String(g.id || g.facebookGroupId || ""),
+        name: g.name,
+        memberCount: g.memberCount,
+        url: g.url,
+      }));
+      let data = await apiFetchJson("/api/groups/sync", {
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify({ groups: groupsForApi }),
       });
+      if (!data?.success) {
+        data = await apiFetchJson("/api/facebook/groups", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+      }
       if (data?.success) {
         await broadcastAccountSwitched({
           id: data.accountId,
@@ -1241,6 +1254,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           avatarUrl: data.avatarUrl,
           isActive: true,
         });
+      }
+      if (data && data.success === false && /Unauthorized|unauthenticated/i.test(String(data.error || ""))) {
+        data = { ...data, error: "יש להתחבר קודם לאתר Distro" };
       }
       sendResponse(data || { success: false, error: "Sync request failed" });
     })().catch((err) =>
