@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
+import { ExtensionAuthBridge } from "@/components/auth/extension-auth-bridge";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getAuthenticatedUserId } from "@/lib/auth";
 import { getActiveAccountId } from "@/lib/channels";
 import { ensureAuthSchema } from "@/lib/ensure-auth-schema";
+import { createExtensionSessionToken } from "@/lib/extension-handoff";
 import { listFacebookAccounts } from "@/lib/facebook-accounts";
 
 export default async function DashboardLayout({
@@ -20,6 +22,8 @@ export default async function DashboardLayout({
   if (!userId) {
     redirect("/signin");
   }
+
+  const extensionToken = createExtensionSessionToken(userId);
 
   let activeAccountName: string | null = null;
   let activeAccountAvatar: string | null = null;
@@ -42,11 +46,14 @@ export default async function DashboardLayout({
   }
 
   return (
-    <DashboardShell
-      userName={activeAccountName}
-      avatarUrl={activeAccountAvatar}
-    >
-      {children}
-    </DashboardShell>
+    <>
+      <ExtensionAuthBridge token={extensionToken} userId={userId} />
+      <DashboardShell
+        userName={activeAccountName}
+        avatarUrl={activeAccountAvatar}
+      >
+        {children}
+      </DashboardShell>
+    </>
   );
 }

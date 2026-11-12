@@ -17,11 +17,13 @@ const DASHBOARD_TAB_URLS = [
 ];
 
 function apiBases() {
-  return [LOCAL_APP, PRODUCTION_APP];
+  // Prefer production (distro-ecru) — fall back to local for dev.
+  return [PRODUCTION_APP, LOCAL_APP];
 }
 
 const HEARTBEAT_ALARM = "distro-heartbeat";
 const WORKER_POLL_ALARM = "distro-worker-poll";
+const DUE_POLL_ALARM = "distro-due-poll";
 const CATCHUP_WINDOW_MS = 12 * 60 * 60 * 1000;
 /** Prevent duplicate catch-up / alarm races for the same campaign. */
 const runningPostIds = new Set();
@@ -29,8 +31,10 @@ const runningPostIds = new Set();
 chrome.runtime.onInstalled.addListener((details) => {
   ensureHeartbeatAlarm();
   ensureWorkerPollAlarm();
+  ensureDuePollAlarm();
   void checkMissedPosts({ notify: true });
   void pollRemoteWorkerQueue();
+  void pollDueCampaigns();
   if (details.reason !== "install") return;
   chrome.tabs.create({ url: PRODUCTION_APP });
   chrome.tabs.create({ url: GROUPS_URL });
@@ -39,9 +43,11 @@ chrome.runtime.onInstalled.addListener((details) => {
 chrome.runtime.onStartup.addListener(() => {
   ensureHeartbeatAlarm();
   ensureWorkerPollAlarm();
+  ensureDuePollAlarm();
   void sendHeartbeat();
   void checkMissedPosts({ notify: true });
   void pollRemoteWorkerQueue();
+  void pollDueCampaigns();
 });
 
 chrome.action.onClicked.addListener((tab) => {
@@ -268,6 +274,57 @@ function ensureWorkerPollAlarm() {
   });
 }
 
+/** Poll GET /api/campaigns/due every ~1 minute and publish due campaigns. */
+function ensureDuePollAlarm() {
+  chrome.alarms.create(DUE_POLL_ALARM, {
+    periodInMinutes: 1,
+  });
+}
+
+async function reportCampaignStatus(campaignId, status, extra = {}) {
+  return apiFetchJson("/api/campaigns/report", {
+    method: "POST",
+    body: JSON.stringify({
+      campaignId,
+      status,
+      ...extra,
+    }),
+  });
+}
+
+/**
+ * Poll due scheduled campaigns from distro-ecru and publish via Facebook tabs.
+ */
+async function pollDueCampaigns() {
+  const data = await apiFetchJson("/api/campaigns/due");
+  if (!data?.success) return;
+
+  const campaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
+  for (const camp of campaigns) {
+    if (!camp?.id) continue;
+    if (runningPostIds.has(camp.id)) continue;
+    const status = camp.status || "pending";
+    if (status !== "pending" && status !== "failed") continue;
+
+    const post = {
+      ...camp,
+      status: "pending",
+      isActive: true,
+      imageUrl: camp.imageUrl || "",
+      targetGroups: Array.isArray(camp.targetGroups) ? camp.targetGroups : [],
+      delaySeconds: camp.delaySeconds || 60,
+      nextRunAt:
+        camp.nextRunAt ||
+        camp.scheduledTime ||
+        new Date().toISOString(),
+    };
+
+    upsertScheduledPost(post, () => {
+      void runScheduledPost(post);
+    });
+  }
+}
+
 async function sendHeartbeat() {
   await apiFetchJson("/api/device/heartbeat", {
     method: "POST",
@@ -428,6 +485,7 @@ async function runScheduledPost(post) {
   patchLocalPost(post.id, { status: "running" });
   syncPostToApi(post.id, { status: "running" });
   void reportWorkerStatus(post.id, "processing");
+  void reportCampaignStatus(post.id, "RUNNING");
 
   try {
     const tabId = await ensureFacebookTab();
@@ -455,8 +513,16 @@ async function runScheduledPost(post) {
       });
     }
 
+    // Primary: /api/campaigns/report → Turso status הושלם (completed)
+    const reportRes = await reportCampaignStatus(post.id, "PUBLISHED", {
+      results: Array.isArray(result.groupResults) ? result.groupResults : [],
+    });
+    if (reportRes?.success && reportRes.post) {
+      upsertScheduledPost(reportRes.post);
+      return;
+    }
+
     // Prefer worker status-update (advances runs_count + next_run_at).
-    // Group results already synced via /published — avoid duplicates.
     const statusRes = await reportWorkerStatus(post.id, "completed");
     if (statusRes?.success && (statusRes.post || statusRes.campaign)) {
       upsertScheduledPost(statusRes.post || statusRes.campaign);
@@ -520,6 +586,7 @@ async function runScheduledPost(post) {
     patchLocalPost(post.id, { status: "failed", errorMessage: message });
     syncPostToApi(post.id, { status: "failed", errorMessage: message });
     void reportWorkerStatus(post.id, "failed", { errorMessage: message });
+    void reportCampaignStatus(post.id, "FAILED", { errorMessage: message });
   } finally {
     runningPostIds.delete(post.id);
   }
@@ -533,6 +600,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
   if (alarm.name === WORKER_POLL_ALARM) {
     void pollRemoteWorkerQueue();
+    return;
+  }
+  if (alarm.name === DUE_POLL_ALARM) {
+    void pollDueCampaigns();
     return;
   }
   if (!alarm.name.startsWith(ALARM_PREFIX)) return;
@@ -552,11 +623,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   });
 });
 
-// Boot heartbeat + remote worker poll + catch-up when the service worker wakes
+// Boot heartbeat + remote worker / due poll + catch-up when the service worker wakes
 ensureHeartbeatAlarm();
 ensureWorkerPollAlarm();
+ensureDuePollAlarm();
 void sendHeartbeat();
 void pollRemoteWorkerQueue();
+void pollDueCampaigns();
 
 async function runLiveUpdateJob(job) {
   const tabId = await ensureFacebookTab();
@@ -853,6 +926,65 @@ async function switchFacebookAccount() {
   return addNewFacebookAccount();
 }
 
+/**
+ * Open facebook.com/groups/joins/ and scrape joined groups for the dashboard.
+ * Returns { success, groups: [{ facebookGroupId, name, url, memberCount }] }.
+ */
+async function scrapeJoinedGroupsForWeb() {
+  const tabs = await chrome.tabs.query({
+    url: ["https://*.facebook.com/*", "https://www.facebook.com/*"],
+  });
+  let tabId = tabs.find((t) => t.url?.includes("/groups/"))?.id || tabs[0]?.id;
+  if (!tabId) {
+    const created = await chrome.tabs.create({
+      url: GROUPS_URL,
+      active: true,
+    });
+    tabId = created.id;
+    await new Promise((r) => setTimeout(r, 4000));
+  } else if (
+    !tabs.find((t) => t.id === tabId)?.url?.includes("/groups/joins")
+  ) {
+    await chrome.tabs.update(tabId, { url: GROUPS_URL, active: true });
+    await new Promise((r) => setTimeout(r, 4000));
+  }
+
+  let result = await sendToTab(tabId, { action: "SCRAPE_JOINED_GROUPS" });
+  if (result?.navigating || !result?.ok) {
+    await chrome.tabs.update(tabId, { url: GROUPS_URL, active: true });
+    await new Promise((r) => setTimeout(r, 4500));
+    result = await sendToTab(tabId, { action: "SCRAPE_JOINED_GROUPS" });
+  }
+
+  if (!result?.ok) {
+    return {
+      success: false,
+      ok: false,
+      groups: [],
+      error: result?.error || "Failed to scrape Facebook groups",
+    };
+  }
+
+  const groups = (result.groups || []).map((g) => ({
+    facebookGroupId: String(g.facebookGroupId || g.id),
+    name: g.name,
+    url: g.url || `https://www.facebook.com/groups/${g.facebookGroupId || g.id}`,
+    memberCount:
+      typeof g.memberCount === "number" ? g.memberCount : 0,
+  }));
+
+  chrome.storage.local.set({
+    syncedGroups: groups.map((g) => ({
+      id: g.facebookGroupId,
+      name: g.name,
+      url: g.url,
+      memberCount: g.memberCount,
+    })),
+  });
+
+  return { success: true, ok: true, groups };
+}
+
 async function triggerGroupSyncAfterLogin() {
   const tabs = await chrome.tabs.query({
     url: ["https://*.facebook.com/*", "https://www.facebook.com/*"],
@@ -961,20 +1093,52 @@ chrome.cookies.onChanged.addListener((changeInfo) => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "PING" || message?.action === "PING") {
+    sendResponse({
+      ok: true,
+      pong: true,
+      version: chrome.runtime.getManifest().version,
+    });
+    return true;
+  }
   if (message?.type === "AUTH_SUCCESS" && typeof message.token === "string") {
-    chrome.storage.local.set(
-      { sessionToken: message.token, authenticatedAt: Date.now() },
-      () => sendResponse({ ok: true })
-    );
+    const patch = {
+      sessionToken: message.token,
+      authenticatedAt: Date.now(),
+    };
+    if (typeof message.userId === "string" && message.userId) {
+      patch.userId = message.userId;
+    }
+    chrome.storage.local.set(patch, () => sendResponse({ ok: true }));
     return true;
   }
   if (message?.type === "GET_AUTH") {
-    chrome.storage.local.get(["sessionToken", "authenticatedAt"], (stored) => {
-      sendResponse({
-        authenticated: Boolean(stored.sessionToken),
-        sessionToken: stored.sessionToken || null,
-      });
-    });
+    chrome.storage.local.get(
+      ["sessionToken", "authenticatedAt", "userId"],
+      (stored) => {
+        sendResponse({
+          authenticated: Boolean(stored.sessionToken),
+          sessionToken: stored.sessionToken || null,
+          userId: stored.userId || null,
+        });
+      }
+    );
+    return true;
+  }
+  if (
+    message?.type === "SCRAPE_GROUPS" ||
+    message?.action === "SCRAPE_GROUPS"
+  ) {
+    void scrapeJoinedGroupsForWeb()
+      .then((result) => sendResponse(result))
+      .catch((err) =>
+        sendResponse({
+          success: false,
+          ok: false,
+          groups: [],
+          error: err instanceof Error ? err.message : "Scrape failed",
+        })
+      );
     return true;
   }
   if (
@@ -1009,7 +1173,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (
     message?.type === "SYNC_GROUPS" ||
-    message?.action === "SYNC_GROUPS" ||
+    message?.action === "SYNC_GROUPS"
+  ) {
+    // Dashboard sync: scrape only — page POSTs to /api/groups/sync
+    void scrapeJoinedGroupsForWeb()
+      .then((result) => sendResponse(result))
+      .catch((err) =>
+        sendResponse({
+          success: false,
+          ok: false,
+          groups: [],
+          error: err instanceof Error ? err.message : "Sync failed",
+        })
+      );
+    return true;
+  }
+  if (
     message?.type === "RUN_DISTRO_SYNC" ||
     message?.action === "RUN_DISTRO_SYNC"
   ) {
@@ -1138,11 +1317,41 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 chrome.runtime.onMessageExternal.addListener(
   (message, _sender, sendResponse) => {
+    if (message?.type === "PING" || message?.action === "PING") {
+      sendResponse({
+        ok: true,
+        pong: true,
+        version: chrome.runtime.getManifest().version,
+      });
+      return true;
+    }
     if (message?.type === "AUTH_SUCCESS" && typeof message.token === "string") {
-      chrome.storage.local.set(
-        { sessionToken: message.token, authenticatedAt: Date.now() },
-        () => sendResponse({ ok: true })
-      );
+      const patch = {
+        sessionToken: message.token,
+        authenticatedAt: Date.now(),
+      };
+      if (typeof message.userId === "string" && message.userId) {
+        patch.userId = message.userId;
+      }
+      chrome.storage.local.set(patch, () => sendResponse({ ok: true }));
+      return true;
+    }
+    if (
+      message?.type === "SCRAPE_GROUPS" ||
+      message?.action === "SCRAPE_GROUPS" ||
+      message?.type === "SYNC_GROUPS" ||
+      message?.action === "SYNC_GROUPS"
+    ) {
+      void scrapeJoinedGroupsForWeb()
+        .then((result) => sendResponse(result))
+        .catch((err) =>
+          sendResponse({
+            success: false,
+            ok: false,
+            groups: [],
+            error: err instanceof Error ? err.message : "Scrape failed",
+          })
+        );
       return true;
     }
     if (

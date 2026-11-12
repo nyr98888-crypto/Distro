@@ -19,15 +19,22 @@ declare global {
 
 const EXTENSION_ID = process.env.NEXT_PUBLIC_EXTENSION_ID || "";
 
-/** Push dashboard session token to the installed Chrome extension (if present). */
-export function pushAuthToExtension(token: string): void {
+/** Push dashboard session token + userId to the Chrome extension (if present). */
+export function pushAuthToExtension(
+  token: string,
+  userId?: string | null
+): void {
   if (typeof window === "undefined" || !token) return;
 
+  const payload = {
+    source: "distro-web",
+    type: "AUTH_SUCCESS",
+    token,
+    userId: userId || null,
+  };
+
   try {
-    window.postMessage(
-      { source: "distro-web", type: "AUTH_SUCCESS", token },
-      window.location.origin
-    );
+    window.postMessage(payload, window.location.origin);
   } catch {
     // ignore
   }
@@ -35,32 +42,45 @@ export function pushAuthToExtension(token: string): void {
   if (!EXTENSION_ID || !window.chrome?.runtime?.sendMessage) return;
 
   try {
-    window.chrome.runtime.sendMessage(
-      EXTENSION_ID,
-      { type: "AUTH_SUCCESS", token },
-      () => {
-        void window.chrome?.runtime?.lastError;
-      }
-    );
+    window.chrome.runtime.sendMessage(EXTENSION_ID, payload, () => {
+      void window.chrome?.runtime?.lastError;
+    });
   } catch {
     // Extension not installed — expected for many visitors
   }
 }
 
 type ExtensionAuthBridgeProps = {
-  /** Short-lived handoff token from the server for the logged-in user. */
+  /** Longer-lived extension session token for the logged-in user. */
   token: string | null;
+  userId?: string | null;
 };
 
 /**
  * When the dashboard loads for an authenticated user, notify the extension
- * so it can store the session in chrome.storage.local.
+ * so it can store sessionToken + userId in chrome.storage.local.
  */
-export function ExtensionAuthBridge({ token }: ExtensionAuthBridgeProps) {
+export function ExtensionAuthBridge({
+  token,
+  userId,
+}: ExtensionAuthBridgeProps) {
   React.useEffect(() => {
     if (!token) return;
-    pushAuthToExtension(token);
-  }, [token]);
+    pushAuthToExtension(token, userId);
+    // Re-push a few times in case the content script loads late
+    const t1 = window.setTimeout(
+      () => pushAuthToExtension(token, userId),
+      1500
+    );
+    const t2 = window.setTimeout(
+      () => pushAuthToExtension(token, userId),
+      4000
+    );
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [token, userId]);
 
   return null;
 }

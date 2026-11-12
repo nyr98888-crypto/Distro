@@ -1284,6 +1284,44 @@
       return true;
     }
     if (
+      request?.action === "SCRAPE_JOINED_GROUPS" ||
+      request?.type === "SCRAPE_JOINED_GROUPS"
+    ) {
+      void (async () => {
+        try {
+          if (!/\/groups\/joins/i.test(location.href)) {
+            location.href = "https://www.facebook.com/groups/joins/";
+            sendResponse({
+              ok: false,
+              navigating: true,
+              error: "Navigating to joined groups — retry",
+            });
+            return;
+          }
+          const scraped = await scrapeFacebookGroups();
+          const groups = (scraped.groups || []).map((g) => ({
+            facebookGroupId: String(g.id),
+            id: String(g.id),
+            name: g.name,
+            url: g.url || `https://www.facebook.com/groups/${g.id}`,
+            memberCount:
+              typeof g.memberCount === "number" ? g.memberCount : 0,
+          }));
+          sendResponse({
+            ok: true,
+            groups,
+            profile: scraped.fbProfile || null,
+          });
+        } catch (err) {
+          sendResponse({
+            ok: false,
+            error: err instanceof Error ? err.message : "Scrape failed",
+          });
+        }
+      })();
+      return true;
+    }
+    if (
       request?.action === "GET_FACEBOOK_PROFILE" ||
       request?.type === "GET_FACEBOOK_PROFILE"
     ) {

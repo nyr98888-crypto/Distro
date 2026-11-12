@@ -502,7 +502,7 @@ export function CampaignsDashboard({
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     credentials: "include",
-                    body: JSON.stringify({ seedIfEmpty: true }),
+                    body: JSON.stringify({ groups: [], cleanupFakes: true }),
                   });
                   const data = (await res.json().catch(() => null)) as {
                     success?: boolean;

@@ -6,20 +6,14 @@ import {
   getActiveAccountId,
   listChannelsForAccount,
 } from "@/lib/channels";
+import { cleanupSeedChannels } from "@/lib/cleanup-seed-groups";
 import { ensureAuthSchema } from "@/lib/ensure-auth-schema";
 import {
   getActiveConnectedAccount,
   parseStoredSession,
 } from "@/lib/facebook-accounts";
-import {
-  GRAPH_VERSION,
-  syncGroupsFromGraph,
-} from "@/lib/facebook-oauth";
+import { syncGroupsFromGraph } from "@/lib/facebook-oauth";
 import { db } from "@/lib/db";
-import {
-  TEST_FACEBOOK_GROUPS,
-  TEST_GROUP_TAG,
-} from "@/lib/test-groups";
 
 const groupSchema = z.object({
   facebookGroupId: z.string().regex(/^\d{5,}$/).optional(),
@@ -29,17 +23,11 @@ const groupSchema = z.object({
   url: z.string().optional().or(z.literal("")),
 });
 
-const addTestGroupSchema = z.object({
-  name: z.string().min(1).max(200),
-  memberCount: z.number().int().nonnegative().optional(),
-  facebookGroupId: z.string().regex(/^\d{5,}$/).optional(),
-});
-
 const bodySchema = z.object({
-  /** When true (default), seed test groups if Graph returns 0 targets. */
-  seedIfEmpty: z.boolean().optional().default(true),
+  /** Real groups scraped by the Chrome extension (preferred). */
   groups: z.array(groupSchema).optional(),
-  addTestGroup: addTestGroupSchema.optional(),
+  /** One-shot: purge known mockup rows even when no groups are sent. */
+  cleanupFakes: z.boolean().optional().default(true),
 });
 
 const DEFAULT_TAGS = JSON.stringify(["פייסבוק", "אישי"]);
@@ -91,21 +79,6 @@ async function upsertChannel(
   });
 }
 
-async function seedTestGroups(accountId: string): Promise<number> {
-  let count = 0;
-  for (const g of TEST_FACEBOOK_GROUPS) {
-    await upsertChannel(accountId, {
-      externalId: g.facebookGroupId,
-      name: g.name,
-      memberCount: g.memberCount,
-      url: g.url,
-      tags: JSON.stringify([TEST_GROUP_TAG, "פייסבוק"]),
-    });
-    count += 1;
-  }
-  return count;
-}
-
 export async function OPTIONS() {
   return corsPreflight();
 }
@@ -113,10 +86,9 @@ export async function OPTIONS() {
 /**
  * POST /api/groups/sync
  *
- * Standalone Vercel flow (no Chrome extension):
- * 1. Sync Pages/groups via Graph using the stored OAuth token
- * 2. If Graph returns 0 targets, seed 5 Hebrew test groups into Turso
- * 3. Optionally append a custom test group (`addTestGroup`)
+ * Upsert real Facebook groups only (extension scrape preferred).
+ * Graph pages sync is best-effort and never seeds fakes.
+ * Always purges known mockup test groups from Turso when cleanupFakes is true.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -146,7 +118,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = parsed.data;
-    const seedIfEmpty = body.seedIfEmpty !== false;
+    const cleanupFakes = body.cleanupFakes !== false;
+
+    let removedFakes = 0;
+    if (cleanupFakes) {
+      try {
+        removedFakes = await cleanupSeedChannels();
+      } catch (error) {
+        console.warn("[groups/sync] fake cleanup failed:", error);
+      }
+    }
 
     const account = await getActiveConnectedAccount(userId);
     if (!account) {
@@ -155,6 +136,10 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "No Facebook account linked — sign in with Facebook first",
           needsReauth: true,
+          removedFakes,
+          extensionRequired: true,
+          message:
+            "Install the DISTRO Chrome extension and sync from /dashboard/channels",
         },
         { status: 404 }
       );
@@ -164,51 +149,19 @@ export async function POST(request: NextRequest) {
     const oauthToken = stored.oauthAccessToken?.trim() || "";
 
     let graphCount = 0;
-    let seeded = false;
-    let source: "graph" | "seed" | "manual" | "mixed" = "graph";
+    let extensionCount = 0;
+    let source: "extension" | "graph" | "mixed" | "empty" = "empty";
 
-    // 1) Graph: pages (me/accounts) + groups (best-effort)
+    // 1) Best-effort Graph pages (never seeds fakes)
     if (oauthToken) {
       try {
         graphCount = await syncGroupsFromGraph(account.id, oauthToken);
       } catch (error) {
         console.warn("[groups/sync] Graph sync failed:", error);
       }
-
-      // Explicit me/accounts check for logging / zero detection
-      if (graphCount === 0) {
-        try {
-          const pagesUrl = new URL(
-            `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts`
-          );
-          pagesUrl.searchParams.set("fields", "id,name,fan_count,link");
-          pagesUrl.searchParams.set("limit", "100");
-          pagesUrl.searchParams.set("access_token", oauthToken);
-          const pagesRes = await fetch(pagesUrl.toString(), { method: "GET" });
-          const pagesJson = (await pagesRes.json()) as {
-            data?: unknown[];
-            error?: { message?: string };
-          };
-          const pageLen = Array.isArray(pagesJson.data)
-            ? pagesJson.data.length
-            : 0;
-          if (!pagesRes.ok || pagesJson.error) {
-            console.warn(
-              "[groups/sync] me/accounts:",
-              pagesJson.error?.message || `HTTP ${pagesRes.status}`
-            );
-          } else if (pageLen === 0) {
-            console.info(
-              "[groups/sync] me/accounts returned 0 — will seed test groups"
-            );
-          }
-        } catch (error) {
-          console.warn("[groups/sync] me/accounts probe failed:", error);
-        }
-      }
     }
 
-    // Manual groups from body (extension-compatible or tester paste)
+    // 2) Real groups from Chrome extension scrape
     if (body.groups?.length) {
       for (const g of body.groups) {
         const externalId = g.facebookGroupId || g.id;
@@ -219,42 +172,14 @@ export async function POST(request: NextRequest) {
           memberCount: g.memberCount,
           url: g.url,
         });
-        graphCount += 1;
+        extensionCount += 1;
       }
-      source = oauthToken ? "mixed" : "manual";
     }
 
-    // Custom single test group
-    if (body.addTestGroup) {
-      const id =
-        body.addTestGroup.facebookGroupId ||
-        String(910000000000000 + Math.floor(Math.random() * 899999999999));
-      await upsertChannel(account.id, {
-        externalId: id,
-        name: body.addTestGroup.name,
-        memberCount: body.addTestGroup.memberCount ?? 1000,
-        url: `https://www.facebook.com/groups/${id}`,
-        tags: JSON.stringify([TEST_GROUP_TAG, "פייסבוק"]),
-      });
-      source = source === "graph" && graphCount === 0 ? "manual" : "mixed";
-    }
-
-    // 2) Seed if empty after Graph
-    const activeCount = await db.channel.count({
-      where: { accountId: account.id, isActive: true },
-    });
-
-    if (seedIfEmpty && activeCount === 0 && !body.addTestGroup) {
-      const seededCount = await seedTestGroups(account.id);
-      graphCount = seededCount;
-      seeded = true;
-      source = "seed";
-    } else if (seedIfEmpty && graphCount === 0 && activeCount === 0) {
-      const seededCount = await seedTestGroups(account.id);
-      graphCount = seededCount;
-      seeded = true;
-      source = "seed";
-    }
+    if (extensionCount > 0 && graphCount > 0) source = "mixed";
+    else if (extensionCount > 0) source = "extension";
+    else if (graphCount > 0) source = "graph";
+    else source = "empty";
 
     await db.connectedAccount.update({
       where: { id: account.id },
@@ -264,14 +189,24 @@ export async function POST(request: NextRequest) {
     const accountId =
       (await getActiveAccountId(userId)) || account.id;
     const channels = await listChannelsForAccount(accountId);
+    const activeCount = channels.filter((c) => c.isActive).length;
+
+    const extensionRequired = activeCount === 0 && extensionCount === 0;
+    const message = extensionRequired
+      ? "No real groups found. Install the DISTRO Chrome extension, stay logged into Facebook, then click Sync Groups."
+      : undefined;
 
     const res = corsJson({
       success: true,
-      syncedCount: channels.filter((c) => c.isActive).length,
+      syncedCount: activeCount,
       channelCount: channels.length,
       channels,
-      seeded,
+      extensionCount,
+      graphCount,
+      removedFakes,
       source,
+      extensionRequired,
+      message,
       accountId,
     });
     return applyCorsHeaders(res);

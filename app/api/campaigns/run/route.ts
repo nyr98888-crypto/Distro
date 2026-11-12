@@ -14,8 +14,8 @@ import { db } from "@/lib/db";
 import { parseTargetGroups } from "@/lib/scheduled-posts";
 import {
   randomHumanDelaySeconds,
-  testModeDelaySeconds,
-} from "@/lib/test-groups";
+  shortDelaySeconds,
+} from "@/lib/human-delay";
 
 /** Allow long-running sequential publishes on Vercel Fluid / Pro. */
 export const maxDuration = 300;
@@ -268,7 +268,7 @@ async function processScheduledPost(
     // Human-like pacing between targets (short in Vercel test mode)
     if (i < targets.length - 1) {
       const seconds = opts.testMode
-        ? testModeDelaySeconds()
+        ? shortDelaySeconds()
         : Math.max(
             1,
             Number(post.delaySeconds) > 0
@@ -357,7 +357,7 @@ async function processLegacyCampaignJobs(opts: {
     }
 
     if (opts.testMode) {
-      await sleep(testModeDelaySeconds() * 1000);
+      await sleep(shortDelaySeconds() * 1000);
     }
   }
 

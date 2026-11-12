@@ -23,6 +23,13 @@ export type FacebookProfile = {
   isConnected: boolean;
 };
 
+export type ScrapedGroup = {
+  facebookGroupId: string;
+  name: string;
+  url?: string;
+  memberCount?: number;
+};
+
 declare global {
   interface Window {
     chrome?: {
@@ -118,6 +125,23 @@ function sendToExtensionWithResponse(
   }
 }
 
+/** Detect installed extension via page bridge (no hardcoded Extension ID). */
+export function pingExtension(onDone?: (ok: boolean) => void): void {
+  sendToExtensionWithResponse(
+    { type: "PING", action: "PING" },
+    (response) => {
+      const ok = Boolean(
+        response &&
+          typeof response === "object" &&
+          ((response as { ok?: boolean }).ok === true ||
+            (response as { pong?: boolean }).pong === true)
+      );
+      onDone?.(ok);
+    },
+    2500
+  );
+}
+
 export function notifyExtensionSchedule(post: ScheduledPostDTO): void {
   postToPage({ type: "SCHEDULE_POST", post });
   sendToExtension({ type: "SCHEDULE_POST", post });
@@ -183,29 +207,57 @@ export function notifyExtensionAddFacebookAccount(
 }
 
 /**
- * Ask the extension to scrape Facebook groups from the active facebook.com
- * tab and POST them to the Distro API (works on Vercel via web-bridge).
+ * Ask the extension to scrape facebook.com/groups/joins/ and return
+ * { facebookGroupId, name, url, memberCount }[] — page then POSTs to /api/groups/sync.
  */
+export function requestExtensionScrapeGroups(
+  onDone?: (result: {
+    ok: boolean;
+    groups?: ScrapedGroup[];
+    error?: string;
+  }) => void
+): void {
+  sendToExtensionWithResponse(
+    {
+      type: "SCRAPE_GROUPS",
+      action: "SCRAPE_GROUPS",
+    },
+    (response) => {
+      if (!response || typeof response !== "object") {
+        onDone?.({
+          ok: false,
+          error: "No response from extension — is DISTRO installed?",
+        });
+        return;
+      }
+      const res = response as {
+        success?: boolean;
+        ok?: boolean;
+        groups?: ScrapedGroup[];
+        error?: string;
+      };
+      const groups = Array.isArray(res.groups) ? res.groups : [];
+      const ok = res.success !== false && res.ok !== false;
+      if (!ok) {
+        onDone?.({
+          ok: false,
+          error: res.error || "Group scrape failed",
+        });
+        return;
+      }
+      onDone?.({ ok: true, groups });
+    },
+    120000
+  );
+}
+
+/** @deprecated prefer requestExtensionScrapeGroups + page POST */
 export function notifyExtensionSyncGroups(
   onDone?: (ok: boolean, error?: string) => void
 ): void {
-  sendToExtensionWithResponse(
-    { type: "SYNC_GROUPS", action: "SYNC_GROUPS" },
-    (response) => {
-      const ok = Boolean(
-        response &&
-          typeof response === "object" &&
-          (response as { success?: boolean }).success !== false &&
-          (response as { ok?: boolean }).ok !== false
-      );
-      const error =
-        response && typeof response === "object"
-          ? (response as { error?: string }).error
-          : "No response from extension";
-      onDone?.(ok, ok ? undefined : error || "Group sync failed");
-    },
-    60000
-  );
+  requestExtensionScrapeGroups((result) => {
+    onDone?.(result.ok, result.error);
+  });
 }
 
 /** @deprecated use notifyExtensionSwitchFacebookAccountById / Add */

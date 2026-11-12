@@ -1,13 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Plus, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { ChannelStatsCards } from "@/components/dashboard/channel-stats";
 import { ChannelTable } from "@/components/dashboard/channel-table";
 import {
   computeChannelStats,
   type ChannelDTO,
 } from "@/lib/channels-shared";
+import {
+  pingExtension,
+  requestExtensionScrapeGroups,
+} from "@/lib/extension-bridge";
 import { useI18n } from "@/lib/i18n";
 
 type ChannelsClientProps = {
@@ -24,24 +28,80 @@ export function ChannelsClient({
     Array.isArray(initialChannels) ? initialChannels : []
   );
   const [syncing, setSyncing] = React.useState(false);
-  const [adding, setAdding] = React.useState(false);
   const [syncMessage, setSyncMessage] = React.useState<string | null>(null);
-  const [testName, setTestName] = React.useState("");
+  const [extensionReady, setExtensionReady] = React.useState<boolean | null>(
+    null
+  );
 
   const stats = React.useMemo(
     () => computeChannelStats(channels),
     [channels]
   );
 
+  React.useEffect(() => {
+    pingExtension((ok) => setExtensionReady(ok));
+  }, []);
+
   async function syncGroups() {
     setSyncing(true);
     setSyncMessage(null);
     try {
+      const hasExt = await new Promise<boolean>((resolve) => {
+        pingExtension((ok) => resolve(ok));
+      });
+      setExtensionReady(hasExt);
+
+      if (!hasExt) {
+        setSyncMessage(
+          dir === "rtl"
+            ? "יש להתקין את תוסף DISTRO בכרום ולרענן את העמוד — סנכרון קבוצות דורש את התוסף"
+            : "Install the DISTRO Chrome extension and refresh — group sync requires the extension"
+        );
+        // Still purge fakes server-side
+        await fetch("/api/groups/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ groups: [], cleanupFakes: true }),
+        }).catch(() => null);
+        return;
+      }
+
+      setSyncMessage(
+        dir === "rtl"
+          ? "פותח את רשימת הקבוצות בפייסבוק…"
+          : "Opening Facebook joined groups…"
+      );
+
+      const scraped = await new Promise<{
+        ok: boolean;
+        groups?: Array<{
+          facebookGroupId: string;
+          name: string;
+          url?: string;
+          memberCount?: number;
+        }>;
+        error?: string;
+      }>((resolve) => {
+        requestExtensionScrapeGroups((result) => resolve(result));
+      });
+
+      if (!scraped.ok) {
+        setSyncMessage(
+          scraped.error ||
+            (dir === "rtl"
+              ? "התוסף לא הצליח לקרוא קבוצות — ודאו שאתם מחוברים לפייסבוק"
+              : "Extension could not scrape groups — stay logged into Facebook")
+        );
+        return;
+      }
+
+      const groups = scraped.groups || [];
       const res = await fetch("/api/groups/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ seedIfEmpty: true }),
+        body: JSON.stringify({ groups, cleanupFakes: true }),
       });
       const data = (await res.json().catch(() => null)) as {
         success?: boolean;
@@ -49,7 +109,9 @@ export function ChannelsClient({
         needsReauth?: boolean;
         channels?: ChannelDTO[];
         channelCount?: number;
-        seeded?: boolean;
+        extensionRequired?: boolean;
+        message?: string;
+        removedFakes?: number;
         source?: string;
       } | null;
 
@@ -77,19 +139,28 @@ export function ChannelsClient({
         setChannels(data.channels);
       }
       const count = data.channelCount ?? data.channels?.length ?? 0;
-      if (data.seeded) {
+
+      if (data.extensionRequired || count === 0) {
         setSyncMessage(
           dir === "rtl"
-            ? `לא נמצאו עמודים ב-Graph — נטענו ${count} קבוצות בדיקה לבחירה בקמפיין`
-            : `No Graph pages found — seeded ${count} test groups for campaign selection`
+            ? "לא נמצאו קבוצות אמיתיות. התחברו לפייסבוק באותו דפדפן שבו מותקן התוסף, ואז לחצו שוב על סנכרון קבוצות."
+            : data.message ||
+                "No real groups found. Log into Facebook in the same browser as the extension, then sync again."
         );
-      } else {
-        setSyncMessage(
-          dir === "rtl"
-            ? `הסנכרון הושלם — ${count} יעדים`
-            : `Sync complete — ${count} targets`
-        );
+        return;
       }
+
+      const cleaned =
+        typeof data.removedFakes === "number" && data.removedFakes > 0
+          ? dir === "rtl"
+            ? ` (הוסרו ${data.removedFakes} קבוצות בדיקה)`
+            : ` (removed ${data.removedFakes} test groups)`
+          : "";
+      setSyncMessage(
+        dir === "rtl"
+          ? `הסנכרון הושלם — ${count} קבוצות אמיתיות${cleaned}`
+          : `Sync complete — ${count} real groups${cleaned}`
+      );
     } catch (err) {
       setSyncMessage(
         err instanceof Error
@@ -103,60 +174,17 @@ export function ChannelsClient({
     }
   }
 
-  async function addTestGroup() {
-    const name = testName.trim();
-    if (!name) return;
-    setAdding(true);
-    setSyncMessage(null);
-    try {
-      const res = await fetch("/api/groups/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          seedIfEmpty: false,
-          addTestGroup: { name, memberCount: 1000 },
-        }),
-      });
-      const data = (await res.json().catch(() => null)) as {
-        success?: boolean;
-        error?: string;
-        channels?: ChannelDTO[];
-      } | null;
-      if (!res.ok || !data?.success) {
-        setSyncMessage(
-          data?.error ||
-            (dir === "rtl" ? "הוספה נכשלה" : "Add failed")
-        );
-        return;
-      }
-      if (Array.isArray(data.channels)) setChannels(data.channels);
-      setTestName("");
-      setSyncMessage(
-        dir === "rtl"
-          ? `נוספה קבוצת בדיקה: ${name}`
-          : `Added test group: ${name}`
-      );
-    } catch (err) {
-      setSyncMessage(
-        err instanceof Error
-          ? err.message
-          : dir === "rtl"
-            ? "שגיאה"
-            : "Error"
-      );
-    } finally {
-      setAdding(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
           {dir === "rtl"
-            ? "סנכרון מפייסבוק דרך השרת (Graph API) — בלי תוסף. אם אין עמודים, נטענות קבוצות בדיקה."
-            : "Server-side Facebook Graph sync — no extension. Seeds test groups when pages are empty."}
+            ? extensionReady
+              ? "סנכרון דרך תוסף DISTRO — קורא את הקבוצות מפייסבוק עם הסשן המחובר שלכם."
+              : "נדרש תוסף DISTRO בכרום כדי לסנכרן קבוצות אמיתיות (בלי קבוצות בדיקה)."
+            : extensionReady
+              ? "Sync via the DISTRO extension — scrapes your joined Facebook groups with your browser session."
+              : "The DISTRO Chrome extension is required to sync real groups (no test groups)."}
         </p>
         <button
           type="button"
@@ -170,45 +198,6 @@ export function ChannelsClient({
             <RefreshCw className="h-4 w-4" />
           )}
           {t("syncGroups")}
-        </button>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm">
-        <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-sm text-slate-600">
-          <span>
-            {dir === "rtl"
-              ? "+ הוסף קבוצה לבדיקה"
-              : "+ Add test group"}
-          </span>
-          <input
-            value={testName}
-            onChange={(e) => setTestName(e.target.value)}
-            placeholder={
-              dir === "rtl"
-                ? "שם קבוצת בדיקה…"
-                : "Test group name…"
-            }
-            className="rounded-lg border border-slate-200 px-3 py-2 text-slate-900 outline-none focus:border-[#2563EB]"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void addTestGroup();
-              }
-            }}
-          />
-        </label>
-        <button
-          type="button"
-          disabled={adding || !testName.trim()}
-          onClick={() => void addTestGroup()}
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
-        >
-          {adding ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
-          )}
-          {dir === "rtl" ? "הוסף" : "Add"}
         </button>
       </div>
 

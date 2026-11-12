@@ -1,9 +1,27 @@
 /**
  * Forwards dashboard window.postMessage events into the extension service worker
- * and posts the async response back so the Distro web app can await SWITCH_ACCOUNT /
- * ADD_NEW_ACCOUNT without a hard-coded NEXT_PUBLIC_EXTENSION_ID.
+ * and posts the async response back so the Distro web app can await SCRAPE_GROUPS /
+ * SWITCH_ACCOUNT / AUTH_SUCCESS without a hard-coded Extension ID.
  */
 (function () {
+  function announceReady() {
+    try {
+      window.postMessage(
+        {
+          source: "distro-extension",
+          type: "DISTRO_EXTENSION_READY",
+          version: chrome.runtime?.getManifest?.()?.version || null,
+        },
+        window.location.origin
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  announceReady();
+  window.setTimeout(announceReady, 800);
+
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     const data = event.data;
