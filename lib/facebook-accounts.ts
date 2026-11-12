@@ -64,7 +64,7 @@ export function encryptAccountSession(payload: {
   return encryptSession(
     JSON.stringify({
       ...payload,
-      source: payload.source || "chrome-extension",
+      source: payload.source || "facebook-oauth",
       lastGroupSyncAt: new Date().toISOString(),
     })
   );

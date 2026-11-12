@@ -25,11 +25,19 @@ export async function POST() {
     const userId = await requireAuth();
     const account = await getActiveConnectedAccount(userId);
     if (!account) {
+      const anyAccount = await db.connectedAccount.findFirst({
+        where: { userId },
+        select: { id: true, status: true, platformName: true, identifier: true },
+      });
       return NextResponse.json(
         {
           success: false,
-          error:
-            "No Facebook account linked — sign in with Facebook first",
+          error: anyAccount
+            ? `Facebook account found but not usable (status=${anyAccount.status}, platform=${anyAccount.platformName}). Reconnect with Facebook Login.`
+            : "No Facebook account linked for this session — sign in with Facebook first",
+          needsReauth: true,
+          userId,
+          foundAccountId: anyAccount?.id ?? null,
         },
         { status: 404 }
       );

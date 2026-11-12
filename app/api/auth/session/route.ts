@@ -1,6 +1,6 @@
 import { getAuthenticatedUserId } from "@/lib/auth";
 import { corsJson, corsPreflight } from "@/lib/cors";
-import { createHandoffToken } from "@/lib/extension-handoff";
+import { listFacebookAccounts } from "@/lib/facebook-accounts";
 import { db } from "@/lib/db";
 import { safeIso } from "@/lib/safe";
 
@@ -10,8 +10,7 @@ export async function OPTIONS() {
 
 /**
  * GET /api/auth/session
- * Used by the sign-in page to detect when the Chrome extension
- * has completed a channels sync and established a browser session.
+ * Current Distro session + active Facebook profile from Turso (server-side only).
  */
 export async function GET() {
   try {
@@ -21,33 +20,59 @@ export async function GET() {
         connected: false,
         authenticated: false,
         channelCount: 0,
+        user: null,
+        profile: null,
       });
     }
 
-    const account = await db.connectedAccount.findFirst({
-      where: { userId, status: "ACTIVE" },
-      orderBy: { lastSyncedAt: "desc" },
+    const user = await db.user.findUnique({
+      where: { id: userId },
       select: {
         id: true,
-        lastSyncedAt: true,
-        _count: { select: { channels: true } },
+        email: true,
+        name: true,
+        facebookId: true,
       },
     });
 
-    const channelCount = account?._count.channels ?? 0;
-    const connected = Boolean(account && channelCount > 0);
+    const accounts = await listFacebookAccounts(userId);
+    const active = accounts.find((a) => a.isActive) || accounts[0] || null;
+    const channelCount = active?.groupCount ?? 0;
 
     return corsJson({
-      connected,
+      connected: Boolean(active),
       authenticated: true,
       channelCount,
-      lastSyncedAt: safeIso(account?.lastSyncedAt, null),
-      extensionToken: createHandoffToken(userId),
+      user: user
+        ? {
+            id: user.id,
+            email: user.email,
+            name: user.name || active?.name || "",
+            facebookId: user.facebookId || active?.facebookId || null,
+          }
+        : { id: userId },
+      profile: active
+        ? {
+            name: active.name,
+            avatarUrl: active.avatarUrl,
+            facebookId: active.facebookId,
+            accountId: active.id,
+            groupCount: active.groupCount,
+            lastSyncedAt: safeIso(active.lastSyncedAt, null),
+            isConnected: true,
+          }
+        : null,
+      accounts,
     });
   } catch (error) {
     console.error("[auth/session]", error);
     return corsJson(
-      { connected: false, authenticated: false, channelCount: 0 },
+      {
+        connected: false,
+        authenticated: false,
+        channelCount: 0,
+        error: error instanceof Error ? error.message : "session failed",
+      },
       { status: 500 }
     );
   }

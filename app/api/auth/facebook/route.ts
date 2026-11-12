@@ -46,7 +46,8 @@ export async function GET(request: NextRequest) {
       sameSite: "lax" as const,
       path: "/",
       maxAge: STATE_MAX_AGE,
-      secure: process.env.NODE_ENV === "production",
+      secure:
+        process.env.VERCEL === "1" || process.env.NODE_ENV === "production",
     };
     res.cookies.set(STATE_COOKIE, state, cookieBase);
     // Persist the exact redirect_uri used in the dialog so token exchange matches.

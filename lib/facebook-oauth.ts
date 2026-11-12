@@ -428,11 +428,13 @@ export async function upsertUserFromFacebook(profile: {
 
 /**
  * Full web login: User + ConnectedAccount + optional Graph groups.
- * No Chrome extension required.
+ * When linkToUserId is set (existing distro_user_id cookie), attach Facebook
+ * to that user so session cookie and ConnectedAccount never diverge.
  */
 export async function completeFacebookWebLogin(input: {
   profile: FacebookProfile;
   accessToken: string;
+  linkToUserId?: string | null;
 }): Promise<{
   userId: string;
   accountId: string;
@@ -440,12 +442,53 @@ export async function completeFacebookWebLogin(input: {
 }> {
   await ensureAuthSchema();
 
-  const user = await upsertUserFromFacebook(input.profile);
   const facebookId = input.profile.id;
+  const name = (input.profile.name || "").trim();
+  const emailFromFb = (input.profile.email || "").trim().toLowerCase();
+
+  let user: { id: string; email: string; name: string };
+
+  if (input.linkToUserId) {
+    const sessionUser = await db.user.findUnique({
+      where: { id: input.linkToUserId },
+      select: { id: true, email: true, name: true },
+    });
+    if (sessionUser) {
+      // Free facebookId unique slot if another row owns it.
+      const other = await db.user.findFirst({
+        where: { facebookId },
+        select: { id: true },
+      });
+      if (other && other.id !== sessionUser.id) {
+        await db.user.update({
+          where: { id: other.id },
+          data: { facebookId: null },
+        });
+      }
+      user = await db.user.update({
+        where: { id: sessionUser.id },
+        data: {
+          facebookId,
+          name: name || sessionUser.name,
+          ...(emailFromFb ? { email: emailFromFb } : {}),
+        },
+        select: { id: true, email: true, name: true },
+      });
+    } else {
+      user = await upsertUserFromFacebook(input.profile);
+    }
+  } else {
+    user = await upsertUserFromFacebook(input.profile);
+  }
+
   const displayName = (input.profile.name || user.name || "").trim();
   const avatarUrl =
     input.profile.pictureUrl ||
     `https://graph.facebook.com/${facebookId}/picture?type=large`;
+
+  if (!input.accessToken) {
+    throw new Error("Cannot save ConnectedAccount without access token");
+  }
 
   const account = await upsertFacebookAccount({
     userId: user.id,
@@ -456,6 +499,10 @@ export async function completeFacebookWebLogin(input: {
     source: "facebook-oauth",
     makeActive: true,
   });
+
+  if (!account?.id) {
+    throw new Error("ConnectedAccount upsert returned no id");
+  }
 
   // Best-effort channel sync — missing /me/groups|/me/accounts perms must not fail login.
   let groupCount = 0;

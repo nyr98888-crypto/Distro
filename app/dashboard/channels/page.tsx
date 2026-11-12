@@ -54,7 +54,7 @@ export default async function ChannelsPage() {
       {accountId && safeChannels.length === 0 && (
         <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
           אין קבוצות עדיין. לחצו על &quot;סנכרן קבוצות&quot; כדי למשוך קבוצות/עמודים
-          ישירות מפייסבוק דרך השרת (ללא תוסף). אם Meta מגבילה Groups ללא App Review,
+          ישירות מפייסבוק דרך השרת. אם Meta מגבילה Groups ללא App Review,
           ייתכן שיופיעו רק עמודים שאתם מנהלים.
         </div>
       )}

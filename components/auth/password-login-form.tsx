@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, LogIn, UserPlus } from "lucide-react";
-import { pushAuthToExtension } from "@/components/auth/extension-auth-bridge";
 import { useI18n } from "@/lib/i18n";
 
 type AuthMode = "login" | "register";
@@ -37,7 +36,6 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
       const data = (await res.json()) as {
         success?: boolean;
         error?: string;
-        extensionToken?: string;
         redirectTo?: string;
       };
       if (!res.ok || !data.success) {
@@ -45,9 +43,6 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
           data.error ||
             (mode === "register" ? t("registerFailed") : t("loginFailed"))
         );
-      }
-      if (data.extensionToken) {
-        pushAuthToExtension(data.extensionToken);
       }
       router.replace(data.redirectTo || "/dashboard/channels");
       router.refresh();

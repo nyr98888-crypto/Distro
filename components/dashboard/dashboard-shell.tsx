@@ -12,7 +12,6 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { ExtensionInstallButton } from "@/components/dashboard/extension-install-button";
 import { FacebookAccountBar } from "@/components/dashboard/facebook-account-bar";
 import { SidebarHeader } from "@/components/dashboard/sidebar-header";
 import {
@@ -146,7 +145,6 @@ function DashboardSidebar({
             </div>
           </div>
         )}
-        <ExtensionInstallButton />
         <a
           href={support}
           target={support.startsWith("http") ? "_blank" : undefined}

@@ -69,23 +69,11 @@ export function FacebookAccountBar({
     void loadAccounts();
     const onFocus = () => void loadAccounts();
     const onSwitched = () => void loadAccounts();
-    const onMessage = (event: MessageEvent) => {
-      if (event.source !== window) return;
-      const data = event.data as { source?: string; type?: string } | null;
-      if (
-        data?.source === "distro-extension" &&
-        data.type === "ACCOUNT_SWITCHED"
-      ) {
-        void loadAccounts();
-      }
-    };
     window.addEventListener("focus", onFocus);
     window.addEventListener("distro-account-switched", onSwitched);
-    window.addEventListener("message", onMessage);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("distro-account-switched", onSwitched);
-      window.removeEventListener("message", onMessage);
     };
   }, [loadAccounts]);
 

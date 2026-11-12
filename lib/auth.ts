@@ -51,12 +51,20 @@ export async function requireAuth(): Promise<string> {
 }
 
 export function setSessionCookie(res: NextResponse, userId: string): void {
+  // Prefer HTTPS detection so production preview/custom domains always get Secure.
+  const vercelHttps =
+    process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
   res.cookies.set(SESSION_COOKIE_NAME, userId, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_MAX_AGE,
-    secure: process.env.NODE_ENV === "production",
+    secure: vercelHttps,
+  });
+  // Drop legacy cookie so getAuthenticatedUserId cannot prefer a stale user.
+  res.cookies.set(LEGACY_SESSION_COOKIE_NAME, "", {
+    path: "/",
+    maxAge: 0,
   });
 }
 

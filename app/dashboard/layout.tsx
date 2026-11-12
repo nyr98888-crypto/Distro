@@ -1,11 +1,9 @@
 import { redirect } from "next/navigation";
-import { ExtensionAuthBridge } from "@/components/auth/extension-auth-bridge";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getAuthenticatedUserId } from "@/lib/auth";
 import { getActiveAccountId } from "@/lib/channels";
 import { ensureAuthSchema } from "@/lib/ensure-auth-schema";
 import { listFacebookAccounts } from "@/lib/facebook-accounts";
-import { createExtensionSessionToken } from "@/lib/extension-handoff";
 
 export default async function DashboardLayout({
   children,
@@ -21,14 +19,6 @@ export default async function DashboardLayout({
   const userId = await getAuthenticatedUserId();
   if (!userId) {
     redirect("/signin");
-  }
-
-  // Optional: notify extension if installed — never required for web login.
-  let extensionToken: string | null = null;
-  try {
-    extensionToken = createExtensionSessionToken(userId);
-  } catch (error) {
-    console.error("[dashboard/layout] extension token", error);
   }
 
   let activeAccountName: string | null = null;
@@ -52,14 +42,11 @@ export default async function DashboardLayout({
   }
 
   return (
-    <>
-      <ExtensionAuthBridge token={extensionToken} />
-      <DashboardShell
-        userName={activeAccountName}
-        avatarUrl={activeAccountAvatar}
-      >
-        {children}
-      </DashboardShell>
-    </>
+    <DashboardShell
+      userName={activeAccountName}
+      avatarUrl={activeAccountAvatar}
+    >
+      {children}
+    </DashboardShell>
   );
 }

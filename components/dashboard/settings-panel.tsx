@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { CheckCircle2, RefreshCw, Shield, ScrollText, Sparkles } from "lucide-react";
-import { ExtensionInstallButton } from "@/components/dashboard/extension-install-button";
 import { FacebookAccountBar } from "@/components/dashboard/facebook-account-bar";
 import { useI18n } from "@/lib/i18n";
 import { SUPPORT_EMAIL, supportHref } from "@/lib/support";
@@ -50,14 +49,6 @@ export function SettingsPanel() {
         </div>
       </section>
 
-      <section className="space-y-3 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-800">
-          {t("settingsExtension")}
-        </h2>
-        <p className="text-sm text-slate-500">{t("settingsExtensionHint")}</p>
-        <ExtensionInstallButton />
-      </section>
-
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
         <div className="flex flex-wrap gap-1 border-b border-slate-100 bg-slate-50/80 p-2">
           {tabs.map((item) => {
@@ -89,19 +80,15 @@ export function SettingsPanel() {
               {locale === "he" ? (
                 <>
                   <p>
-                    DISTRO פועלת <strong>100% על המחשב המקומי שלכם</strong>.
-                    הפרסום והסנכרון מתבצעים דרך תוסף Chrome בדפדפן שלכם — לא דרך
-                    שרתי צד שלישי שמבצעים פעולות בשמכם בפייסבוק.
+                    DISTRO מסנכרנת קבוצות ופרופיל פייסבוק{" "}
+                    <strong>בצד השרת</strong> דרך Facebook Login (OAuth) ושומרת
+                    את הנתונים בחשבון שלכם ב־Turso. סיסמאות פייסבוק{" "}
+                    <strong>לעולם אינן</strong> נאספות.
                   </p>
                   <ul>
                     <li>
-                      סיסמאות פייסבוק <strong>לעולם אינן</strong> נאספות, נשמרות
-                      או נשלחות לשרתים חיצוניים.
-                    </li>
-                    <li>
-                      עוגיות (cookies) של פייסבוק נשמרות באופן מוצפן לחשבון DISTRO
-                      שלכם לצורך החלפת פרופילים מקומית בלבד — ולא מועברות לצדדים
-                      שלישיים.
+                      אסימון הגישה של פייסבוק נשמר מוצפן בחשבון DISTRO שלכם
+                      לצורך סנכרון קבוצות/עמודים בלבד.
                     </li>
                     <li>
                       תוכן הקמפיינים שלכם מיועד לשימושכם האישי/העסקי ולא נמכר או
@@ -120,20 +107,15 @@ export function SettingsPanel() {
               ) : (
                 <>
                   <p>
-                    DISTRO runs <strong>100% on your local machine</strong>.
-                    Publishing and sync happen through the Chrome extension in
-                    your browser — not through third-party servers acting on
-                    Facebook on your behalf.
+                    DISTRO syncs Facebook groups and profile{" "}
+                    <strong>server-side</strong> via Facebook Login (OAuth) and
+                    stores data in your Turso account. Facebook passwords are{" "}
+                    <strong>never</strong> collected.
                   </p>
                   <ul>
                     <li>
-                      Facebook passwords are <strong>never</strong> collected,
-                      stored, or sent to external servers.
-                    </li>
-                    <li>
-                      Facebook cookies are encrypted for your DISTRO account only
-                      to support local profile switching — never shared with
-                      third parties.
+                      Your Facebook access token is stored encrypted on your
+                      DISTRO account for group/page sync only.
                     </li>
                     <li>
                       Campaign contents are for your personal/business use and

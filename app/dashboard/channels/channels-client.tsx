@@ -90,8 +90,8 @@ export function ChannelsClient({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
           {dir === "rtl"
-            ? "סנכרון ישיר מפייסבוק דרך השרת — ללא צורך בתוסף Chrome"
-            : "Direct Facebook sync via the server — no Chrome extension required"}
+            ? "סנכרון ישיר מפייסבוק דרך השרת (Facebook Graph API)"
+            : "Direct Facebook sync via the server (Facebook Graph API)"}
         </p>
         <button
           type="button"
