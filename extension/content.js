@@ -1,5 +1,5 @@
 (() => {
-  const API_BASE = "https://distro-auu6.vercel.app";
+  const API_BASE = "https://distro-ecru.vercel.app";
   const SYNC_URL = `${API_BASE}/api/channels/sync`;
   const DISTRO_API_KEY = "zpv9dq136kwfxcn0t285hgoeajmlryi7ub4s";
   const PANEL_ID = "distro-sidebar-container";

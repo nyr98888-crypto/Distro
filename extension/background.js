@@ -1,10 +1,20 @@
 importScripts("schedule-engine.js");
 
-const PRODUCTION_APP = "https://distro-auu6.vercel.app";
+const PRODUCTION_APP = "https://distro-ecru.vercel.app";
 const LOCAL_APP = "http://localhost:3000";
 const LOGIN_URL = `${PRODUCTION_APP}/login`;
 const GROUPS_URL = "https://www.facebook.com/groups/joins/";
 const ALARM_PREFIX = "distro-sched-";
+
+/** Dashboard origins that may host the Distro web app. */
+const DASHBOARD_TAB_URLS = [
+  "http://localhost/*",
+  "http://localhost:3000/*",
+  "http://127.0.0.1/*",
+  "http://127.0.0.1:3000/*",
+  "https://distro-ecru.vercel.app/*",
+  "https://*.vercel.app/*",
+];
 
 function apiBases() {
   return [LOCAL_APP, PRODUCTION_APP];
@@ -213,11 +223,7 @@ async function broadcastAccountSwitched(account) {
   chrome.runtime.sendMessage(payload, () => void chrome.runtime.lastError);
   try {
     const tabs = await chrome.tabs.query({
-      url: [
-        "http://localhost/*",
-        "http://127.0.0.1/*",
-        "https://distro-auu6.vercel.app/*",
-      ],
+      url: DASHBOARD_TAB_URLS,
     });
     for (const tab of tabs) {
       if (!tab.id) continue;
@@ -1001,6 +1007,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       );
     return true;
   }
+  if (
+    message?.type === "SYNC_GROUPS" ||
+    message?.action === "SYNC_GROUPS" ||
+    message?.type === "RUN_DISTRO_SYNC" ||
+    message?.action === "RUN_DISTRO_SYNC"
+  ) {
+    void triggerGroupSyncAfterLogin()
+      .then((result) =>
+        sendResponse(
+          result && typeof result === "object"
+            ? { success: true, ...result }
+            : { success: true }
+        )
+      )
+      .catch((err) =>
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : "Sync failed",
+        })
+      );
+    return true;
+  }
   if (message?.type === "GET_FACEBOOK_PROFILE") {
     void readFacebookProfile().then((profile) =>
       sendResponse({ success: true, profile })
@@ -1143,6 +1171,28 @@ chrome.runtime.onMessageExternal.addListener(
           sendResponse({
             success: false,
             error: err instanceof Error ? err.message : "Add account failed",
+          })
+        );
+      return true;
+    }
+    if (
+      message?.type === "SYNC_GROUPS" ||
+      message?.action === "SYNC_GROUPS" ||
+      message?.type === "RUN_DISTRO_SYNC" ||
+      message?.action === "RUN_DISTRO_SYNC"
+    ) {
+      void triggerGroupSyncAfterLogin()
+        .then((result) =>
+          sendResponse(
+            result && typeof result === "object"
+              ? { success: true, ...result }
+              : { success: true }
+          )
+        )
+        .catch((err) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Sync failed",
           })
         );
       return true;

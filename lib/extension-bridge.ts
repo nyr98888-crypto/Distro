@@ -182,6 +182,32 @@ export function notifyExtensionAddFacebookAccount(
   );
 }
 
+/**
+ * Ask the extension to scrape Facebook groups from the active facebook.com
+ * tab and POST them to the Distro API (works on Vercel via web-bridge).
+ */
+export function notifyExtensionSyncGroups(
+  onDone?: (ok: boolean, error?: string) => void
+): void {
+  sendToExtensionWithResponse(
+    { type: "SYNC_GROUPS", action: "SYNC_GROUPS" },
+    (response) => {
+      const ok = Boolean(
+        response &&
+          typeof response === "object" &&
+          (response as { success?: boolean }).success !== false &&
+          (response as { ok?: boolean }).ok !== false
+      );
+      const error =
+        response && typeof response === "object"
+          ? (response as { error?: string }).error
+          : "No response from extension";
+      onDone?.(ok, ok ? undefined : error || "Group sync failed");
+    },
+    60000
+  );
+}
+
 /** @deprecated use notifyExtensionSwitchFacebookAccountById / Add */
 export function notifyExtensionSwitchFacebookAccount(
   onDone?: (ok: boolean) => void

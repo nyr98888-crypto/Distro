@@ -1,5 +1,5 @@
 /** Canonical production web app URL used by the extension and onboarding. */
-export const PRODUCTION_APP_URL = "https://distro-auu6.vercel.app";
+export const PRODUCTION_APP_URL = "https://distro-ecru.vercel.app";
 
 export function getAppUrl(): string {
   const fromEnv =

@@ -10,6 +10,16 @@ const nextConfig: NextConfig = {
     "ioredis",
     "puppeteer-core",
   ],
+  // Avoid React #418 hydration on /dashboard — redirect before any RSC HTML.
+  async redirects() {
+    return [
+      {
+        source: "/dashboard",
+        destination: "/dashboard/campaigns",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

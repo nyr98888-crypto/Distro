@@ -13,11 +13,13 @@ import {
   Pencil,
   Play,
   Plus,
+  RefreshCw,
   Search,
   Table2,
   Trash2,
   Users,
   X,
+  Loader2,
 } from "lucide-react";
 import type { ChannelDTO } from "@/lib/channels-shared";
 import { CampaignWizard } from "@/components/dashboard/campaign-wizard";
@@ -28,6 +30,7 @@ import {
 import {
   notifyExtensionCancel,
   notifyExtensionSchedule,
+  notifyExtensionSyncGroups,
 } from "@/lib/extension-bridge";
 import type { ScheduledPostDTO } from "@/lib/scheduled-posts";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
@@ -156,6 +159,7 @@ export function CampaignsDashboard({
   const [menuId, setMenuId] = React.useState<string | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [syncingGroups, setSyncingGroups] = React.useState(false);
   const [liveGroupCount, setLiveGroupCount] = React.useState(
     () => initialChannels.filter((c) => c?.isActive).length
   );
@@ -438,6 +442,37 @@ export function CampaignsDashboard({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <button
+            type="button"
+            disabled={syncingGroups}
+            onClick={() => {
+              setSyncingGroups(true);
+              setError(null);
+              notifyExtensionSyncGroups((ok, err) => {
+                if (!ok) {
+                  setError(
+                    err ||
+                      (dir === "rtl"
+                        ? "סנכרון קבוצות נכשל — בדקו את התוסף ופייסבוק"
+                        : "Group sync failed — check extension and Facebook")
+                  );
+                  setSyncingGroups(false);
+                  return;
+                }
+                void load({ silent: true }).finally(() =>
+                  setSyncingGroups(false)
+                );
+              });
+            }}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+          >
+            {syncingGroups ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            {t("syncGroups")}
+          </button>
           <Link
             href="/dashboard/calendar"
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"

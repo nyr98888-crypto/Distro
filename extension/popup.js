@@ -1,7 +1,7 @@
 const GROUPS_URL = "https://www.facebook.com/groups/joins/";
 
 // Production Vercel deployment — must match host_permissions in manifest.json
-const PRODUCTION_API_BASE = "https://distro-auu6.vercel.app";
+const PRODUCTION_API_BASE = "https://distro-ecru.vercel.app";
 const LOCAL_API_BASE = "http://localhost:3000";
 const API_BASE = PRODUCTION_API_BASE;
 
