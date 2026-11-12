@@ -49,8 +49,14 @@ export async function POST() {
       );
     }
 
+    // Profile from /me is required; groups/pages are optional without App Review.
     const profile = await fetchFacebookProfile(oauthToken);
-    const groupCount = await syncGroupsFromGraph(account.id, oauthToken);
+    let groupCount = 0;
+    try {
+      groupCount = await syncGroupsFromGraph(account.id, oauthToken);
+    } catch (error) {
+      console.warn("[facebook/sync] groups/pages sync skipped:", error);
+    }
 
     const nextName =
       (profile?.name || "").trim() ||

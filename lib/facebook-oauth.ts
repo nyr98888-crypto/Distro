@@ -96,9 +96,9 @@ export function buildFacebookAuthUrl(
     redirect_uri: redirectUri,
     state,
     response_type: "code",
-    // Keep scopes that work without heavy App Review so Login never fails for testers.
+    // Basic scopes only — pages_* require App Review and fail in development.
     // Graph sync still attempts /me/groups + /me/accounts with whatever Meta grants.
-    scope: "email,public_profile,pages_show_list,pages_read_engagement",
+    scope: "public_profile,email",
   });
   return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 }
@@ -242,14 +242,15 @@ async function upsertChannelFromGraph(
 
 /**
  * Best-effort group + page sync via Graph API.
- * Many consumer apps cannot list joined groups without App Review —
- * failures are logged; login / sync still succeeds with whatever Meta returns.
+ * With only public_profile,email these calls often lack permission —
+ * each fetch is isolated so login / sync still succeeds from /me alone.
  */
 export async function syncGroupsFromGraph(
   accountId: string,
   oauthAccessToken: string
 ): Promise<number> {
   let upserted = 0;
+
   try {
     const groupUrl = new URL(
       `https://graph.facebook.com/${GRAPH_VERSION}/me/groups`
@@ -281,8 +282,11 @@ export async function syncGroupsFromGraph(
         upserted += 1;
       }
     }
+  } catch (error) {
+    console.warn("[facebook-oauth] /me/groups error:", error);
+  }
 
-    // Pages the user manages (often available without Groups App Review).
+  try {
     const pagesUrl = new URL(
       `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts`
     );
@@ -318,12 +322,11 @@ export async function syncGroupsFromGraph(
         upserted += 1;
       }
     }
-
-    return upserted;
   } catch (error) {
-    console.warn("[facebook-oauth] groups sync error:", error);
-    return upserted;
+    console.warn("[facebook-oauth] /me/accounts error:", error);
   }
+
+  return upserted;
 }
 
 /** Refresh profile fields from Graph using a stored user access token. */
@@ -454,8 +457,16 @@ export async function completeFacebookWebLogin(input: {
     makeActive: true,
   });
 
-  // Initial Graph sync so the tester lands on the dashboard already connected.
-  const groupCount = await syncGroupsFromGraph(account.id, input.accessToken);
+  // Best-effort channel sync — missing /me/groups|/me/accounts perms must not fail login.
+  let groupCount = 0;
+  try {
+    groupCount = await syncGroupsFromGraph(account.id, input.accessToken);
+  } catch (error) {
+    console.warn(
+      "[facebook-oauth] post-login Graph sync skipped:",
+      error
+    );
+  }
 
   await db.connectedAccount.update({
     where: { id: account.id },
