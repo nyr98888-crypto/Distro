@@ -1175,28 +1175,6 @@ chrome.runtime.onMessageExternal.addListener(
         );
       return true;
     }
-    if (
-      message?.type === "SYNC_GROUPS" ||
-      message?.action === "SYNC_GROUPS" ||
-      message?.type === "RUN_DISTRO_SYNC" ||
-      message?.action === "RUN_DISTRO_SYNC"
-    ) {
-      void triggerGroupSyncAfterLogin()
-        .then((result) =>
-          sendResponse(
-            result && typeof result === "object"
-              ? { success: true, ...result }
-              : { success: true }
-          )
-        )
-        .catch((err) =>
-          sendResponse({
-            success: false,
-            error: err instanceof Error ? err.message : "Sync failed",
-          })
-        );
-      return true;
-    }
     if (message?.type === "GET_FACEBOOK_PROFILE") {
       void readFacebookProfile().then((profile) =>
         sendResponse({ success: true, profile })

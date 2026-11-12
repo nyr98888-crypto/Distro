@@ -22,13 +22,16 @@ type FacebookLoginButtonProps = {
   className?: string;
 };
 
-/** One-click Facebook Login — navigates to /api/auth/facebook. */
+const FACEBOOK_AUTH_HREF =
+  "/api/auth/facebook?callbackUrl=%2Fdashboard%2Fchannels";
+
+/** One-click Facebook Login — navigates to /api/auth/facebook (OAuth dialog). */
 export function FacebookLoginButton({ className }: FacebookLoginButtonProps) {
   const { t } = useI18n();
 
   return (
     <a
-      href="/api/auth/facebook"
+      href={FACEBOOK_AUTH_HREF}
       className={
         className ??
         "inline-flex h-12 w-full max-w-sm items-center justify-center gap-2.5 rounded-xl bg-[#1877F2] px-5 text-base font-semibold text-white shadow-sm transition hover:bg-[#166FE5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1877F2]/60"

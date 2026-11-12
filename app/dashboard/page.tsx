@@ -1,9 +1,12 @@
-import { permanentRedirect } from "next/navigation";
+import { redirect } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 
 /**
- * `/dashboard` must not render layout+empty children (React #418 hydration).
- * next.config.ts also redirects here; this is a belt-and-suspenders fallback.
+ * Never render dashboard shell HTML for `/dashboard` itself.
+ * next.config.ts also redirects here; keep a server redirect as fallback
+ * so React never hydrates an empty index (error #418).
  */
 export default function DashboardIndexPage() {
-  permanentRedirect("/dashboard/campaigns");
+  redirect("/dashboard/campaigns");
 }

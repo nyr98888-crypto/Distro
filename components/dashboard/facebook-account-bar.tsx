@@ -9,10 +9,6 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import {
-  notifyExtensionAddFacebookAccount,
-  notifyExtensionSwitchFacebookAccountById,
-} from "@/lib/extension-bridge";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -109,19 +105,24 @@ export function FacebookAccountBar({
     setBusy(true);
     setMessage(null);
     try {
-      await new Promise<void>((resolve) => {
-        notifyExtensionSwitchFacebookAccountById(accountId, (ok, err) => {
-          if (!ok) setMessage(err || "החלפת חשבון נכשלה — בדקו את התוסף");
-          else {
-            setMessage("החשבון הוחלף");
-            window.dispatchEvent(new Event("distro-account-switched"));
-            // Soft reload dashboard data for scoped groups/campaigns
-            window.setTimeout(() => window.location.reload(), 600);
-          }
-          resolve();
-        });
+      const res = await fetch("/api/facebook/accounts/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetAccountId: accountId }),
       });
-      await loadAccounts();
+      const data = (await res.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        accounts?: FacebookAccountListItem[];
+      } | null;
+      if (!res.ok || !data?.success) {
+        setMessage(data?.error || "החלפת חשבון נכשלה");
+        return;
+      }
+      if (Array.isArray(data.accounts)) setAccounts(data.accounts);
+      setMessage("החשבון הוחלף");
+      window.dispatchEvent(new Event("distro-account-switched"));
+      window.setTimeout(() => window.location.reload(), 400);
       setOpen(false);
     } finally {
       setBusy(false);
@@ -132,18 +133,39 @@ export function FacebookAccountBar({
     setBusy(true);
     setMessage(null);
     setOpen(false);
+    // Server-side Facebook OAuth — never open facebook.com as a raw tab.
+    window.location.href =
+      "/api/auth/facebook?callbackUrl=%2Fdashboard%2Fchannels";
+  }
+
+  async function syncActiveAccount() {
+    setBusy(true);
+    setMessage(null);
     try {
-      await new Promise<void>((resolve) => {
-        notifyExtensionAddFacebookAccount((ok, err) => {
-          if (!ok) {
-            setMessage(err || "פתיחת התחברות נכשלה");
-            window.open("https://www.facebook.com/login/", "_blank");
-          } else {
-            setMessage("התחברו בפייסבוק בחלון שנפתח — נשמור את החשבון אוטומטית");
-          }
-          resolve();
-        });
-      });
+      const res = await fetch("/api/facebook/sync", { method: "POST" });
+      const data = (await res.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        needsReauth?: boolean;
+        accounts?: FacebookAccountListItem[];
+        channelCount?: number;
+      } | null;
+      if (!res.ok || !data?.success) {
+        if (data?.needsReauth) {
+          window.location.href =
+            "/api/auth/facebook?callbackUrl=%2Fdashboard%2Fchannels";
+          return;
+        }
+        setMessage(data?.error || "הסנכרון נכשל");
+        return;
+      }
+      if (Array.isArray(data.accounts)) setAccounts(data.accounts);
+      setMessage(
+        typeof data.channelCount === "number"
+          ? `סונכרנו ${data.channelCount} יעדים`
+          : "הסנכרון הושלם"
+      );
+      window.dispatchEvent(new Event("distro-account-switched"));
     } finally {
       setBusy(false);
     }
@@ -258,7 +280,7 @@ export function FacebookAccountBar({
                   isLight ? "text-[#10B981]" : "text-green-400"
                 )}
               >
-                {t("locallyConnected")}
+                {t("connectedActive")}
               </span>
             </div>
           </div>
@@ -367,6 +389,24 @@ export function FacebookAccountBar({
               </p>
             )}
           </div>
+          {active ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void syncActiveAccount()}
+              className={cn(
+                "flex w-full items-center justify-center gap-1.5 border-t px-3 py-2.5 text-xs font-semibold disabled:opacity-60",
+                isLight
+                  ? "border-slate-100 text-slate-700 hover:bg-slate-50"
+                  : "border-white/10 text-slate-200 hover:bg-white/5"
+              )}
+            >
+              <RefreshCw
+                className={cn("h-3.5 w-3.5", busy && "animate-spin")}
+              />
+              {t("syncGroups")}
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={busy}

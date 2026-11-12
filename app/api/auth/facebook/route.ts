@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  POST_LOGIN_COOKIE,
   REDIRECT_COOKIE,
   STATE_COOKIE,
   STATE_MAX_AGE,
@@ -7,6 +8,7 @@ import {
   buildFacebookRedirectUri,
   createOAuthState,
   getFacebookCredentials,
+  sanitizePostLoginPath,
 } from "@/lib/facebook-oauth";
 
 function requestOrigin(request: NextRequest): string {
@@ -24,6 +26,7 @@ function requestOrigin(request: NextRequest): string {
 /**
  * GET /api/auth/facebook
  * Start Facebook Login — redirect to Meta dialog with origin-based redirect_uri.
+ * Optional: ?callbackUrl=/dashboard/channels or ?redirect=/dashboard/channels
  */
 export async function GET(request: NextRequest) {
   const origin = requestOrigin(request);
@@ -32,6 +35,10 @@ export async function GET(request: NextRequest) {
     const state = createOAuthState();
     const redirectUri = buildFacebookRedirectUri(origin);
     const url = buildFacebookAuthUrl(state, redirectUri);
+    const postLoginPath = sanitizePostLoginPath(
+      request.nextUrl.searchParams.get("callbackUrl") ||
+        request.nextUrl.searchParams.get("redirect")
+    );
 
     const res = NextResponse.redirect(url);
     const cookieBase = {
@@ -44,6 +51,7 @@ export async function GET(request: NextRequest) {
     res.cookies.set(STATE_COOKIE, state, cookieBase);
     // Persist the exact redirect_uri used in the dialog so token exchange matches.
     res.cookies.set(REDIRECT_COOKIE, redirectUri, cookieBase);
+    res.cookies.set(POST_LOGIN_COOKIE, postLoginPath, cookieBase);
     return res;
   } catch (error) {
     console.error("[auth/facebook]", error);

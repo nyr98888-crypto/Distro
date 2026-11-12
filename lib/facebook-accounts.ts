@@ -247,6 +247,9 @@ export async function saveAccountCookies(
     fbAvatarUrl:
       profile?.avatarUrl || account.avatarUrl || prev.fbAvatarUrl || "",
     cookies,
+    // Preserve Graph OAuth token when extension/cookie sync updates the blob.
+    oauthAccessToken: prev.oauthAccessToken,
+    source: prev.source || "chrome-extension",
   });
   return db.connectedAccount.update({
     where: { id: account.id },

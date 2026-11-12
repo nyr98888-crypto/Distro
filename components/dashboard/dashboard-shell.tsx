@@ -141,7 +141,7 @@ function DashboardSidebar({
                 {userName || "—"}
               </p>
               <p className="text-[10px] font-medium text-[#10B981]">
-                {t("locallyConnected")}
+                {t("connectedActive")}
               </p>
             </div>
           </div>

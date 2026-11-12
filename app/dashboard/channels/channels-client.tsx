@@ -8,7 +8,6 @@ import {
   computeChannelStats,
   type ChannelDTO,
 } from "@/lib/channels-shared";
-import { notifyExtensionSyncGroups } from "@/lib/extension-bridge";
 import { useI18n } from "@/lib/i18n";
 
 type ChannelsClientProps = {
@@ -32,50 +31,58 @@ export function ChannelsClient({
     [channels]
   );
 
-  async function reloadChannels() {
-    try {
-      const res = await fetch("/api/channels").catch(() => null);
-      const text = res ? await res.text().catch(() => "") : "";
-      let data: { channels?: ChannelDTO[] } | null = null;
-      try {
-        data = text ? (JSON.parse(text) as { channels?: ChannelDTO[] }) : null;
-      } catch {
-        data = null;
-      }
-      if (Array.isArray(data?.channels)) {
-        setChannels(data.channels);
-      }
-    } catch {
-      /* keep current */
-    }
-  }
-
-  function syncGroups() {
+  async function syncGroups() {
     setSyncing(true);
     setSyncMessage(null);
-    notifyExtensionSyncGroups((ok, err) => {
-      if (!ok) {
+    try {
+      const res = await fetch("/api/facebook/sync", { method: "POST" });
+      const data = (await res.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        needsReauth?: boolean;
+        channels?: ChannelDTO[];
+        channelCount?: number;
+      } | null;
+
+      if (!res.ok || !data?.success) {
+        if (data?.needsReauth) {
+          setSyncMessage(
+            dir === "rtl"
+              ? "יש להתחבר מחדש עם פייסבוק כדי לסנכרן קבוצות"
+              : "Reconnect with Facebook to sync groups"
+          );
+          window.setTimeout(() => {
+            window.location.href =
+              "/api/auth/facebook?callbackUrl=%2Fdashboard%2Fchannels";
+          }, 1200);
+          return;
+        }
         setSyncMessage(
-          err ||
-            (dir === "rtl"
-              ? "הסנכרון נכשל — ודאו שהתוסף מותקן ופייסבוק פתוח"
-              : "Sync failed — install the extension and open Facebook")
+          data?.error ||
+            (dir === "rtl" ? "הסנכרון נכשל" : "Sync failed")
         );
-        setSyncing(false);
         return;
       }
+
+      if (Array.isArray(data.channels)) {
+        setChannels(data.channels);
+      }
       setSyncMessage(
-        dir === "rtl" ? "הסנכרון הושלם — מרענן קבוצות…" : "Sync done — refreshing…"
+        dir === "rtl"
+          ? `הסנכרון הושלם — ${data.channelCount ?? data.channels?.length ?? 0} יעדים`
+          : `Sync complete — ${data.channelCount ?? data.channels?.length ?? 0} targets`
       );
-      window.setTimeout(() => {
-        void reloadChannels().finally(() => {
-          setSyncing(false);
-          setSyncMessage(
-            dir === "rtl" ? "הקבוצות עודכנו" : "Groups updated"
-          );
-        });
-      }, 1500);
-    });
+    } catch (err) {
+      setSyncMessage(
+        err instanceof Error
+          ? err.message
+          : dir === "rtl"
+            ? "שגיאת סנכרון"
+            : "Sync error"
+      );
+    } finally {
+      setSyncing(false);
+    }
   }
 
   return (
@@ -83,13 +90,13 @@ export function ChannelsClient({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
           {dir === "rtl"
-            ? "סנכרנו קבוצות מהטאב הפעיל בפייסבוק דרך תוסף Chrome"
-            : "Sync groups from your active Facebook tab via the Chrome extension"}
+            ? "סנכרון ישיר מפייסבוק דרך השרת — ללא צורך בתוסף Chrome"
+            : "Direct Facebook sync via the server — no Chrome extension required"}
         </p>
         <button
           type="button"
           disabled={syncing}
-          onClick={() => syncGroups()}
+          onClick={() => void syncGroups()}
           className="inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1D4ED8] disabled:opacity-60"
         >
           {syncing ? (

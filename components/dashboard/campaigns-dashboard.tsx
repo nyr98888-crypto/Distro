@@ -30,7 +30,6 @@ import {
 import {
   notifyExtensionCancel,
   notifyExtensionSchedule,
-  notifyExtensionSyncGroups,
 } from "@/lib/extension-bridge";
 import type { ScheduledPostDTO } from "@/lib/scheduled-posts";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
@@ -448,21 +447,42 @@ export function CampaignsDashboard({
             onClick={() => {
               setSyncingGroups(true);
               setError(null);
-              notifyExtensionSyncGroups((ok, err) => {
-                if (!ok) {
+              void (async () => {
+                try {
+                  const res = await fetch("/api/facebook/sync", {
+                    method: "POST",
+                  });
+                  const data = (await res.json().catch(() => null)) as {
+                    success?: boolean;
+                    error?: string;
+                    needsReauth?: boolean;
+                  } | null;
+                  if (!res.ok || !data?.success) {
+                    if (data?.needsReauth) {
+                      window.location.href =
+                        "/api/auth/facebook?callbackUrl=%2Fdashboard%2Fchannels";
+                      return;
+                    }
+                    throw new Error(
+                      data?.error ||
+                        (dir === "rtl"
+                          ? "סנכרון קבוצות נכשל"
+                          : "Group sync failed")
+                    );
+                  }
+                  await load({ silent: true });
+                } catch (err) {
                   setError(
-                    err ||
-                      (dir === "rtl"
-                        ? "סנכרון קבוצות נכשל — בדקו את התוסף ופייסבוק"
-                        : "Group sync failed — check extension and Facebook")
+                    err instanceof Error
+                      ? err.message
+                      : dir === "rtl"
+                        ? "סנכרון קבוצות נכשל"
+                        : "Group sync failed"
                   );
+                } finally {
                   setSyncingGroups(false);
-                  return;
                 }
-                void load({ silent: true }).finally(() =>
-                  setSyncingGroups(false)
-                );
-              });
+              })();
             }}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
           >

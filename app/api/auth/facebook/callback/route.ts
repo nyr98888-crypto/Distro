@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { setSessionCookie } from "@/lib/auth";
 import { ensureAuthSchema } from "@/lib/ensure-auth-schema";
 import {
+  DEFAULT_POST_LOGIN_PATH,
+  POST_LOGIN_COOKIE,
   REDIRECT_COOKIE,
   STATE_COOKIE,
   buildFacebookRedirectUri,
   completeFacebookWebLogin,
   exchangeFacebookCode,
+  sanitizePostLoginPath,
   verifyOAuthState,
 } from "@/lib/facebook-oauth";
 
@@ -25,6 +28,7 @@ function requestOrigin(request: NextRequest): string {
 function clearOAuthCookies(res: NextResponse): void {
   res.cookies.set(STATE_COOKIE, "", { path: "/", maxAge: 0 });
   res.cookies.set(REDIRECT_COOKIE, "", { path: "/", maxAge: 0 });
+  res.cookies.set(POST_LOGIN_COOKIE, "", { path: "/", maxAge: 0 });
 }
 
 function redirectToLogin(
@@ -40,7 +44,7 @@ function redirectToLogin(
 
 /**
  * GET /api/auth/facebook/callback
- * Meta OAuth → Turso User + ConnectedAccount + session cookie → dashboard.
+ * Meta OAuth → Turso User + ConnectedAccount + session cookie → /dashboard/channels.
  * Does not require the Chrome extension.
  */
 export async function GET(request: NextRequest) {
@@ -68,6 +72,9 @@ export async function GET(request: NextRequest) {
     const storedRedirect =
       request.cookies.get(REDIRECT_COOKIE)?.value ||
       buildFacebookRedirectUri(origin);
+    const postLoginPath = sanitizePostLoginPath(
+      request.cookies.get(POST_LOGIN_COOKIE)?.value || DEFAULT_POST_LOGIN_PATH
+    );
 
     if (!code) {
       return redirectToLogin(origin, "Missing Facebook authorization code");
@@ -86,7 +93,7 @@ export async function GET(request: NextRequest) {
     );
     const login = await completeFacebookWebLogin({ profile, accessToken });
 
-    const dest = new URL("/dashboard", origin);
+    const dest = new URL(postLoginPath, origin);
     const res = NextResponse.redirect(dest);
     setSessionCookie(res, login.userId);
     clearOAuthCookies(res);

@@ -8,9 +8,33 @@ import { upsertFacebookAccount } from "@/lib/facebook-accounts";
 const GRAPH_VERSION = "v21.0";
 const STATE_COOKIE = "distro_fb_oauth_state";
 const REDIRECT_COOKIE = "distro_fb_oauth_redirect";
+const POST_LOGIN_COOKIE = "distro_fb_oauth_next";
 const STATE_MAX_AGE = 60 * 10; // 10 minutes
+const DEFAULT_POST_LOGIN_PATH = "/dashboard/channels";
 
-export { STATE_COOKIE, REDIRECT_COOKIE, STATE_MAX_AGE, GRAPH_VERSION };
+export {
+  STATE_COOKIE,
+  REDIRECT_COOKIE,
+  POST_LOGIN_COOKIE,
+  STATE_MAX_AGE,
+  GRAPH_VERSION,
+  DEFAULT_POST_LOGIN_PATH,
+};
+
+/** Only allow same-origin relative paths (open-redirect safe). */
+export function sanitizePostLoginPath(
+  raw: string | null | undefined
+): string {
+  if (!raw) return DEFAULT_POST_LOGIN_PATH;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return DEFAULT_POST_LOGIN_PATH;
+  }
+  if (trimmed.includes("://") || trimmed.includes("\\")) {
+    return DEFAULT_POST_LOGIN_PATH;
+  }
+  return trimmed;
+}
 
 function oauthSecret(): string {
   return (
@@ -72,8 +96,9 @@ export function buildFacebookAuthUrl(
     redirect_uri: redirectUri,
     state,
     response_type: "code",
-    // Groups may require App Review; profile+email always work for Login.
-    scope: "email,public_profile",
+    // Keep scopes that work without heavy App Review so Login never fails for testers.
+    // Graph sync still attempts /me/groups + /me/accounts with whatever Meta grants.
+    scope: "email,public_profile,pages_show_list,pages_read_engagement",
   });
   return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 }
@@ -85,10 +110,36 @@ type FacebookTokenResponse = {
   error?: { message?: string; type?: string; code?: number };
 };
 
+/** Exchange a short-lived user token for a long-lived (~60 day) token. */
+export async function exchangeForLongLivedToken(
+  shortLivedToken: string
+): Promise<string> {
+  const { clientId, clientSecret } = getFacebookCredentials();
+  const url = new URL(
+    `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`
+  );
+  url.searchParams.set("grant_type", "fb_exchange_token");
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("client_secret", clientSecret);
+  url.searchParams.set("fb_exchange_token", shortLivedToken);
+
+  const res = await fetch(url.toString(), { method: "GET" });
+  const json = (await res.json()) as FacebookTokenResponse;
+  if (!res.ok || !json.access_token) {
+    console.warn(
+      "[facebook-oauth] long-lived token exchange failed:",
+      json.error?.message || `HTTP ${res.status}`
+    );
+    return shortLivedToken;
+  }
+  return json.access_token;
+}
+
 type FacebookProfile = {
   id: string;
   name?: string;
   email?: string;
+  pictureUrl?: string;
 };
 
 export async function exchangeFacebookCode(
@@ -114,12 +165,15 @@ export async function exchangeFacebookCode(
     throw new Error(detail);
   }
 
+  const accessToken = await exchangeForLongLivedToken(tokenJson.access_token);
+
   const meUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me`);
-  meUrl.searchParams.set("fields", "id,name,email");
-  meUrl.searchParams.set("access_token", tokenJson.access_token);
+  meUrl.searchParams.set("fields", "id,name,email,picture.type(large)");
+  meUrl.searchParams.set("access_token", accessToken);
 
   const meRes = await fetch(meUrl.toString(), { method: "GET" });
   const profile = (await meRes.json()) as FacebookProfile & {
+    picture?: { data?: { url?: string } };
     error?: { message?: string };
   };
   if (!meRes.ok || !profile.id) {
@@ -130,11 +184,12 @@ export async function exchangeFacebookCode(
   }
 
   return {
-    accessToken: tokenJson.access_token,
+    accessToken,
     profile: {
       id: profile.id,
       name: profile.name,
       email: profile.email,
+      pictureUrl: profile.picture?.data?.url,
     },
   };
 }
@@ -146,75 +201,160 @@ type GraphGroup = {
   member_count?: number;
 };
 
+async function upsertChannelFromGraph(
+  accountId: string,
+  item: { id: string; name: string; memberCount?: number; url: string; tag?: string }
+): Promise<boolean> {
+  const existing = await db.channel.findFirst({
+    where: { accountId, externalId: item.id },
+    select: { id: true, categoryTags: true },
+  });
+  const tags = item.tag ? JSON.stringify([item.tag]) : "[]";
+  if (existing) {
+    await db.channel.update({
+      where: { id: existing.id },
+      data: {
+        name: item.name,
+        memberCount: item.memberCount ?? 0,
+        isActive: true,
+        url: item.url,
+        ...(item.tag && !String(existing.categoryTags || "").includes(item.tag)
+          ? { categoryTags: tags }
+          : {}),
+      },
+    });
+  } else {
+    await db.channel.create({
+      data: {
+        accountId,
+        externalId: item.id,
+        name: item.name,
+        memberCount: item.memberCount ?? 0,
+        isActive: true,
+        url: item.url,
+        categoryTags: tags,
+        isApprovalRequired: false,
+      },
+    });
+  }
+  return true;
+}
+
 /**
- * Best-effort group sync via Graph API.
+ * Best-effort group + page sync via Graph API.
  * Many consumer apps cannot list joined groups without App Review —
- * failures are logged and ignored so login still succeeds.
+ * failures are logged; login / sync still succeeds with whatever Meta returns.
  */
 export async function syncGroupsFromGraph(
   accountId: string,
   oauthAccessToken: string
 ): Promise<number> {
+  let upserted = 0;
   try {
-    const url = new URL(
+    const groupUrl = new URL(
       `https://graph.facebook.com/${GRAPH_VERSION}/me/groups`
     );
-    url.searchParams.set("fields", "id,name,privacy,member_count");
-    url.searchParams.set("limit", "100");
-    url.searchParams.set("access_token", oauthAccessToken);
+    groupUrl.searchParams.set("fields", "id,name,privacy,member_count");
+    groupUrl.searchParams.set("limit", "100");
+    groupUrl.searchParams.set("access_token", oauthAccessToken);
 
-    const res = await fetch(url.toString(), { method: "GET" });
-    const json = (await res.json()) as {
+    const groupRes = await fetch(groupUrl.toString(), { method: "GET" });
+    const groupJson = (await groupRes.json()) as {
       data?: GraphGroup[];
       error?: { message?: string };
     };
-    if (!res.ok || json.error) {
+    if (!groupRes.ok || groupJson.error) {
       console.warn(
         "[facebook-oauth] groups sync skipped:",
-        json.error?.message || `HTTP ${res.status}`
+        groupJson.error?.message || `HTTP ${groupRes.status}`
       );
-      return 0;
+    } else {
+      for (const group of groupJson.data || []) {
+        if (!group.id) continue;
+        await upsertChannelFromGraph(accountId, {
+          id: group.id,
+          name: (group.name || `Group ${group.id}`).trim(),
+          memberCount: group.member_count ?? 0,
+          url: `https://www.facebook.com/groups/${group.id}`,
+          tag: "group",
+        });
+        upserted += 1;
+      }
     }
 
-    const groups = json.data || [];
-    let upserted = 0;
-    for (const group of groups) {
-      if (!group.id) continue;
-      const name = (group.name || `Group ${group.id}`).trim();
-      const existing = await db.channel.findFirst({
-        where: { accountId, externalId: group.id },
-        select: { id: true },
-      });
-      if (existing) {
-        await db.channel.update({
-          where: { id: existing.id },
-          data: {
-            name,
-            memberCount: group.member_count ?? 0,
-            isActive: true,
-            url: `https://www.facebook.com/groups/${group.id}`,
-          },
+    // Pages the user manages (often available without Groups App Review).
+    const pagesUrl = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts`
+    );
+    pagesUrl.searchParams.set("fields", "id,name,fan_count,link");
+    pagesUrl.searchParams.set("limit", "100");
+    pagesUrl.searchParams.set("access_token", oauthAccessToken);
+
+    const pagesRes = await fetch(pagesUrl.toString(), { method: "GET" });
+    const pagesJson = (await pagesRes.json()) as {
+      data?: Array<{
+        id?: string;
+        name?: string;
+        fan_count?: number;
+        link?: string;
+      }>;
+      error?: { message?: string };
+    };
+    if (!pagesRes.ok || pagesJson.error) {
+      console.warn(
+        "[facebook-oauth] pages sync skipped:",
+        pagesJson.error?.message || `HTTP ${pagesRes.status}`
+      );
+    } else {
+      for (const page of pagesJson.data || []) {
+        if (!page.id) continue;
+        await upsertChannelFromGraph(accountId, {
+          id: page.id,
+          name: (page.name || `Page ${page.id}`).trim(),
+          memberCount: page.fan_count ?? 0,
+          url: page.link || `https://www.facebook.com/${page.id}`,
+          tag: "page",
         });
-      } else {
-        await db.channel.create({
-          data: {
-            accountId,
-            externalId: group.id,
-            name,
-            memberCount: group.member_count ?? 0,
-            isActive: true,
-            url: `https://www.facebook.com/groups/${group.id}`,
-            categoryTags: "[]",
-            isApprovalRequired: false,
-          },
-        });
+        upserted += 1;
       }
-      upserted += 1;
     }
+
     return upserted;
   } catch (error) {
     console.warn("[facebook-oauth] groups sync error:", error);
-    return 0;
+    return upserted;
+  }
+}
+
+/** Refresh profile fields from Graph using a stored user access token. */
+export async function fetchFacebookProfile(
+  oauthAccessToken: string
+): Promise<FacebookProfile | null> {
+  try {
+    const meUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me`);
+    meUrl.searchParams.set("fields", "id,name,email,picture.type(large)");
+    meUrl.searchParams.set("access_token", oauthAccessToken);
+    const meRes = await fetch(meUrl.toString(), { method: "GET" });
+    const profile = (await meRes.json()) as FacebookProfile & {
+      picture?: { data?: { url?: string } };
+      error?: { message?: string };
+    };
+    if (!meRes.ok || !profile.id) {
+      console.warn(
+        "[facebook-oauth] profile refresh failed:",
+        profile.error?.message || `HTTP ${meRes.status}`
+      );
+      return null;
+    }
+    return {
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      pictureUrl: profile.picture?.data?.url,
+    };
+  } catch (error) {
+    console.warn("[facebook-oauth] profile refresh error:", error);
+    return null;
   }
 }
 
@@ -300,7 +440,9 @@ export async function completeFacebookWebLogin(input: {
   const user = await upsertUserFromFacebook(input.profile);
   const facebookId = input.profile.id;
   const displayName = (input.profile.name || user.name || "").trim();
-  const avatarUrl = `https://graph.facebook.com/${facebookId}/picture?type=large`;
+  const avatarUrl =
+    input.profile.pictureUrl ||
+    `https://graph.facebook.com/${facebookId}/picture?type=large`;
 
   const account = await upsertFacebookAccount({
     userId: user.id,
@@ -312,6 +454,7 @@ export async function completeFacebookWebLogin(input: {
     makeActive: true,
   });
 
+  // Initial Graph sync so the tester lands on the dashboard already connected.
   const groupCount = await syncGroupsFromGraph(account.id, input.accessToken);
 
   await db.connectedAccount.update({
