@@ -49,9 +49,9 @@ function normalizeCookies(raw: unknown): CookieParam[] {
     if (typeof c.secure === "boolean") cookie.secure = c.secure;
     if (c.sameSite != null) {
       const sameSite = String(c.sameSite).toLowerCase();
-      if (sameSite === "strict" || sameSite === "lax" || sameSite === "none") {
-        cookie.sameSite = sameSite;
-      }
+      if (sameSite === "strict") cookie.sameSite = "Strict";
+      else if (sameSite === "lax") cookie.sameSite = "Lax";
+      else if (sameSite === "none") cookie.sameSite = "None";
     }
     return cookie;
   });
