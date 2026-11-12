@@ -2,9 +2,11 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, LogIn } from "lucide-react";
+import { Loader2, LogIn, UserPlus } from "lucide-react";
 import { pushAuthToExtension } from "@/components/auth/extension-auth-bridge";
 import { useI18n } from "@/lib/i18n";
+
+type AuthMode = "login" | "register";
 
 type PasswordLoginFormProps = {
   className?: string;
@@ -13,6 +15,7 @@ type PasswordLoginFormProps = {
 export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
   const router = useRouter();
   const { dir, t } = useI18n();
+  const [mode, setMode] = React.useState<AuthMode>("login");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [pending, setPending] = React.useState(false);
@@ -23,7 +26,9 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
     setPending(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/login", {
+      const endpoint =
+        mode === "register" ? "/api/auth/register" : "/api/auth/login";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -36,7 +41,10 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
         redirectTo?: string;
       };
       if (!res.ok || !data.success) {
-        throw new Error(data.error || t("loginFailed"));
+        throw new Error(
+          data.error ||
+            (mode === "register" ? t("registerFailed") : t("loginFailed"))
+        );
       }
       if (data.extensionToken) {
         pushAuthToExtension(data.extensionToken);
@@ -44,11 +52,19 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
       router.replace(data.redirectTo || "/dashboard/channels");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("loginFailed"));
+      setError(
+        err instanceof Error
+          ? err.message
+          : mode === "register"
+            ? t("registerFailed")
+            : t("loginFailed")
+      );
     } finally {
       setPending(false);
     }
   };
+
+  const isRegister = mode === "register";
 
   return (
     <form
@@ -56,6 +72,37 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
       className={className ?? "space-y-3"}
       dir={dir}
     >
+      <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1">
+        <button
+          type="button"
+          onClick={() => {
+            setMode("login");
+            setError(null);
+          }}
+          className={`h-9 rounded-md text-sm font-medium transition-colors ${
+            !isRegister
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {t("loginSubmit")}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMode("register");
+            setError(null);
+          }}
+          className={`h-9 rounded-md text-sm font-medium transition-colors ${
+            isRegister
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {t("registerSubmit")}
+        </button>
+      </div>
+
       <div className="space-y-1 text-start">
         <label htmlFor="login-email" className="text-sm font-medium">
           {t("loginEmail")}
@@ -79,14 +126,18 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
         <input
           id="login-password"
           type="password"
-          autoComplete="current-password"
+          autoComplete={isRegister ? "new-password" : "current-password"}
           required
+          minLength={isRegister ? 8 : 1}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           dir="ltr"
           className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
           placeholder="••••••••"
         />
+        {isRegister ? (
+          <p className="text-xs text-muted-foreground">{t("registerHint")}</p>
+        ) : null}
       </div>
       {error ? (
         <p className="text-sm text-destructive" role="alert">
@@ -100,10 +151,12 @@ export function PasswordLoginForm({ className }: PasswordLoginFormProps) {
       >
         {pending ? (
           <Loader2 className="size-4 animate-spin" aria-hidden />
+        ) : isRegister ? (
+          <UserPlus className="size-4" aria-hidden />
         ) : (
           <LogIn className="size-4" aria-hidden />
         )}
-        {t("loginSubmit")}
+        {isRegister ? t("registerSubmit") : t("loginSubmit")}
       </button>
     </form>
   );
