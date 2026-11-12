@@ -1,5 +1,5 @@
 (() => {
-  // Live production only — https://distro-ecru.vercel.app
+  // Live production only — never https://distro-auu6.vercel.app (DEPLOYMENT_NOT_FOUND)
   const API_BASE = "https://distro-ecru.vercel.app";
   const GROUPS_SYNC_URL = `${API_BASE}/api/groups/sync`;
   const SYNC_URL = `${API_BASE}/api/channels/sync`;

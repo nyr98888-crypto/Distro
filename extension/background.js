@@ -1,9 +1,11 @@
 importScripts("schedule-engine.js");
 
 const PRODUCTION_APP = "https://distro-ecru.vercel.app";
+/** Never use /login on a dead host — always ecru /signin. */
 const LOGIN_URL = `${PRODUCTION_APP}/signin`;
 const GROUPS_URL = "https://www.facebook.com/groups/joins/";
 const ALARM_PREFIX = "distro-sched-";
+const DEAD_APP_HOST_RE = /distro-auu6\.vercel\.app|distro-theta\.vercel\.app/i;
 
 /** Dashboard origins that may host the Distro web app. */
 const DASHBOARD_TAB_URLS = [
@@ -20,6 +22,33 @@ function apiBases() {
   return [PRODUCTION_APP];
 }
 
+/** Force ecru and scrub any cached dead Vercel base from older installs. */
+function ensureProductionAppUrl() {
+  chrome.storage.local.get(
+    ["apiBase", "productionAppUrl", "appUrl", "loginUrl"],
+    (stored) => {
+      const patch = {
+        apiBase: PRODUCTION_APP,
+        productionAppUrl: PRODUCTION_APP,
+        loginUrl: LOGIN_URL,
+      };
+      const keysToRemove = [];
+      for (const key of ["apiBase", "productionAppUrl", "appUrl", "loginUrl"]) {
+        const val = stored[key];
+        if (typeof val === "string" && DEAD_APP_HOST_RE.test(val)) {
+          keysToRemove.push(key);
+        }
+      }
+      const finish = () => chrome.storage.local.set(patch);
+      if (keysToRemove.length) {
+        chrome.storage.local.remove(keysToRemove, finish);
+      } else {
+        finish();
+      }
+    }
+  );
+}
+
 const HEARTBEAT_ALARM = "distro-heartbeat";
 const WORKER_POLL_ALARM = "distro-worker-poll";
 const DUE_POLL_ALARM = "distro-due-poll";
@@ -28,6 +57,7 @@ const CATCHUP_WINDOW_MS = 12 * 60 * 60 * 1000;
 const runningPostIds = new Set();
 
 chrome.runtime.onInstalled.addListener((details) => {
+  ensureProductionAppUrl();
   ensureHeartbeatAlarm();
   ensureWorkerPollAlarm();
   ensureDuePollAlarm();
@@ -40,6 +70,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 chrome.runtime.onStartup.addListener(() => {
+  ensureProductionAppUrl();
   ensureHeartbeatAlarm();
   ensureWorkerPollAlarm();
   ensureDuePollAlarm();
@@ -49,6 +80,7 @@ chrome.runtime.onStartup.addListener(() => {
   void pollDueCampaigns();
 });
 
+// Only fires when default_popup is absent; keep as ecru /signin fallback.
 chrome.action.onClicked.addListener((tab) => {
   if (tab?.id && tab.url && tab.url.includes("facebook.com")) {
     chrome.tabs.sendMessage(tab.id, { action: "TOGGLE_DISTRO_SIDEBAR" }, () => {
@@ -58,6 +90,8 @@ chrome.action.onClicked.addListener((tab) => {
   }
   chrome.tabs.create({ url: LOGIN_URL });
 });
+
+ensureProductionAppUrl();
 
 function alarmNameForPost(postId) {
   return `${ALARM_PREFIX}${postId}`;

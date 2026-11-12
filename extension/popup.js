@@ -10,10 +10,37 @@ const DISTRO_API_KEY = "zpv9dq136kwfxcn0t285hgoeajmlryi7ub4s";
 const GROUPS_SYNC_URL = `${API_BASE}/api/groups/sync`;
 const CHANNELS_SYNC_URL = `${API_BASE}/api/channels/sync`;
 const SIGN_IN_URL = `${API_BASE}/signin`;
+const DEAD_APP_HOST_RE = /distro-auu6\.vercel\.app|distro-theta\.vercel\.app/i;
 
 function apiBases() {
   return [PRODUCTION_API_BASE];
 }
+
+/** Scrub cached dead hosts (old installs may still have auu6 /login). */
+function ensureEcruApiBase() {
+  return chrome.storage.local.get(
+    ["apiBase", "productionAppUrl", "appUrl", "loginUrl"],
+    (stored) => {
+      const patch = {
+        apiBase: PRODUCTION_API_BASE,
+        productionAppUrl: PRODUCTION_API_BASE,
+        loginUrl: SIGN_IN_URL,
+      };
+      const keysToRemove = [];
+      for (const key of ["apiBase", "productionAppUrl", "appUrl", "loginUrl"]) {
+        const val = stored[key];
+        if (typeof val === "string" && DEAD_APP_HOST_RE.test(val)) {
+          keysToRemove.push(key);
+        }
+      }
+      const finish = () => chrome.storage.local.set(patch);
+      if (keysToRemove.length) chrome.storage.local.remove(keysToRemove, finish);
+      else finish();
+    }
+  );
+}
+
+ensureEcruApiBase();
 
 /** Map HTTP status to a clear Hebrew popup message. */
 function hebrewSyncError(status, serverError) {
