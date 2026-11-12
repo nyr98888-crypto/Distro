@@ -7,8 +7,10 @@ const nextConfig: NextConfig = {
     "@libsql/isomorphic-ws",
     "@prisma/adapter-libsql",
     "@prisma/client",
+    "@sparticuz/chromium-min",
     "bullmq",
     "ioredis",
+    "puppeteer-core",
   ],
   async headers() {
     return [
