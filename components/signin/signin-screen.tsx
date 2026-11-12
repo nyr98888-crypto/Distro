@@ -1,7 +1,10 @@
 "use client";
 
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { FacebookLoginButton } from "@/components/auth/facebook-login-button";
 import { PasswordLoginForm } from "@/components/auth/password-login-form";
 import { ExtensionConnectPanel } from "@/components/signin/extension-connect-panel";
 import { I18nProvider, LanguageToggle, useI18n } from "@/lib/i18n";
@@ -14,6 +17,8 @@ type SignInScreenProps = {
 function SignInInner({ allowDevLogin }: SignInScreenProps) {
   const { dir, locale, t } = useI18n();
   const support = supportHref(locale);
+  const searchParams = useSearchParams();
+  const oauthError = searchParams.get("error");
 
   return (
     <div
@@ -39,6 +44,33 @@ function SignInInner({ allowDevLogin }: SignInScreenProps) {
         <div className="space-y-1 text-start">
           <h1 className="text-2xl font-bold tracking-tight">{t("loginTitle")}</h1>
           <p className="text-sm text-slate-600">{t("loginSubtitle")}</p>
+        </div>
+
+        {oauthError ? (
+          <p
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            role="alert"
+          >
+            {oauthError}
+          </p>
+        ) : null}
+
+        <section className="space-y-2">
+          <FacebookLoginButton />
+          <p className="text-center text-xs text-slate-500">
+            {t("continueWithFacebookHint")}
+          </p>
+        </section>
+
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center" aria-hidden>
+            <div className="w-full border-t border-slate-200" />
+          </div>
+          <div className="relative flex justify-center text-xs">
+            <span className="bg-white px-2 font-medium text-slate-500">
+              {t("loginWithEmail")}
+            </span>
+          </div>
         </div>
 
         <section className="space-y-3">
@@ -80,7 +112,9 @@ function SignInInner({ allowDevLogin }: SignInScreenProps) {
 export function SignInScreen(props: SignInScreenProps) {
   return (
     <I18nProvider>
-      <SignInInner {...props} />
+      <Suspense fallback={null}>
+        <SignInInner {...props} />
+      </Suspense>
     </I18nProvider>
   );
 }

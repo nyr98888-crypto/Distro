@@ -9,7 +9,7 @@ export const SUPPORT_WHATSAPP_E164 =
 
 export const CHROME_WEB_STORE_URL =
   process.env.NEXT_PUBLIC_CHROME_WEB_STORE_URL?.trim() ||
-  "https://chromewebstore.google.com/";
+  "https://chromewebstore.google.com/detail/iegnppdljinjpehneimfjjchfnpgdbnk";
 
 const SUPPORT_TEXT_HE = "שלום, אני צריך עזרה ב-DISTRO";
 const SUPPORT_TEXT_EN = "Hi, I need help with DISTRO";

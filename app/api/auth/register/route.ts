@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { setSessionCookie } from "@/lib/auth";
 import { corsJson, corsPreflight } from "@/lib/cors";
+import {
+  describeAuthError,
+  ensureAuthSchema,
+} from "@/lib/ensure-auth-schema";
 import { createHandoffToken } from "@/lib/extension-handoff";
 import { hashPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
@@ -21,6 +25,8 @@ export async function OPTIONS() {
  */
 export async function POST(request: NextRequest) {
   try {
+    await ensureAuthSchema();
+
     let body: unknown;
     try {
       body = await request.json();
@@ -78,7 +84,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[auth/register]", error);
     return corsJson(
-      { success: false, error: "Internal server error" },
+      { success: false, error: describeAuthError(error) },
       { status: 500 }
     );
   }

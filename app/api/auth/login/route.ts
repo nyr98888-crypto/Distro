@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { setSessionCookie } from "@/lib/auth";
 import { corsJson, corsPreflight } from "@/lib/cors";
+import {
+  describeAuthError,
+  ensureAuthSchema,
+} from "@/lib/ensure-auth-schema";
 import { createHandoffToken } from "@/lib/extension-handoff";
 import { verifyPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
@@ -25,6 +29,8 @@ export async function OPTIONS() {
  */
 export async function POST(request: NextRequest) {
   try {
+    await ensureAuthSchema();
+
     let body: unknown;
     try {
       body = await request.json();
@@ -56,7 +62,19 @@ export async function POST(request: NextRequest) {
       select: { id: true, passwordHash: true },
     });
 
-    if (!user || !verifyPassword(password, user.passwordHash)) {
+    if (!user?.passwordHash) {
+      return corsJson(
+        {
+          success: false,
+          error: user
+            ? "This account uses Facebook Login — use Continue with Facebook"
+            : "Invalid email or password",
+        },
+        { status: 401 }
+      );
+    }
+
+    if (!verifyPassword(password, user.passwordHash)) {
       return corsJson(
         { success: false, error: "Invalid email or password" },
         { status: 401 }
@@ -82,7 +100,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[auth/login]", error);
     return corsJson(
-      { success: false, error: "Internal server error" },
+      { success: false, error: describeAuthError(error) },
       { status: 500 }
     );
   }

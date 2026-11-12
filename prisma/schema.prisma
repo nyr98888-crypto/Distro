@@ -1,6 +1,6 @@
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -11,7 +11,11 @@ generator client {
 model User {
   id             String          @id @default(uuid())
   email          String          @unique
-  passwordHash   String
+  /// Null/empty for Facebook OAuth-only accounts
+  passwordHash   String?
+  /// Facebook Graph user id when signed in with Facebook Login
+  facebookId     String?         @unique
+  name           String          @default("")
   accounts       ConnectedAccount[]
   campaigns      Campaign[]
   scheduledPosts ScheduledPost[]
