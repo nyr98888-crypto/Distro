@@ -30,10 +30,13 @@ import {
 import {
   notifyExtensionCancel,
   notifyExtensionSchedule,
+  pingExtensionAsync,
+  requestExtensionScrapeGroups,
 } from "@/lib/extension-bridge";
 import type { ScheduledPostDTO } from "@/lib/scheduled-posts";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { asArray, safeJson } from "@/lib/safe";
+import { CHROME_STORE_URL } from "@/lib/support";
 import { cn } from "@/lib/utils";
 
 type ViewMode = "table" | "calendar";
@@ -494,29 +497,76 @@ export function CampaignsDashboard({
             type="button"
             disabled={syncingGroups}
             onClick={() => {
+              // Same Chrome-extension scrape flow as /dashboard/channels —
+              // never redirect to Facebook OAuth for group sync.
               setSyncingGroups(true);
               setError(null);
               void (async () => {
                 try {
+                  const hasExt = await pingExtensionAsync();
+                  if (!hasExt) {
+                    window.open(
+                      CHROME_STORE_URL,
+                      "_blank",
+                      "noopener,noreferrer"
+                    );
+                    setError(
+                      dir === "rtl"
+                        ? "התקינו את תוסף DISTRO ואז לחצו שוב על סנכרון קבוצות (או עברו לעמוד קבוצות למדריך)."
+                        : "Install the DISTRO extension, then click Sync Groups again (or open Groups for the guide)."
+                    );
+                    return;
+                  }
+
+                  const scraped = await new Promise<{
+                    ok: boolean;
+                    groups?: Array<{
+                      facebookGroupId: string;
+                      name: string;
+                      url?: string;
+                      memberCount?: number;
+                    }>;
+                    error?: string;
+                  }>((resolve) => {
+                    requestExtensionScrapeGroups((result) => resolve(result));
+                  });
+
+                  if (!scraped.ok) {
+                    throw new Error(
+                      scraped.error ||
+                        (dir === "rtl"
+                          ? "התוסף לא הצליח לקרוא קבוצות — ודאו שאתם מחוברים לפייסבוק"
+                          : "Extension could not scrape groups — stay logged into Facebook")
+                    );
+                  }
+
+                  const groups = scraped.groups || [];
                   const res = await fetch("/api/groups/sync", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     credentials: "include",
-                    body: JSON.stringify({ groups: [], cleanupFakes: true }),
+                    body: JSON.stringify({ groups, cleanupFakes: true }),
                   });
                   const data = (await res.json().catch(() => null)) as {
                     success?: boolean;
                     error?: string;
                     needsReauth?: boolean;
+                    channelCount?: number;
+                    message?: string;
                   } | null;
                   if (!res.ok || !data?.success) {
                     if (data?.needsReauth) {
-                      window.location.href =
-                        "/api/auth/facebook?callbackUrl=%2Fdashboard%2Fchannels";
-                      return;
+                      // Distro session / linked account missing — do not start Meta OAuth
+                      // for group sync (extension owns Facebook access).
+                      throw new Error(
+                        dir === "rtl"
+                          ? "יש להתחבר ל-DISTRO תחילה. עברו לעמוד קבוצות או התחברו מחדש."
+                          : "Sign in to DISTRO first. Open Groups or sign in again."
+                      );
                     }
                     throw new Error(
                       data?.error ||
+                        data?.message ||
                         (dir === "rtl"
                           ? "סנכרון קבוצות נכשל"
                           : "Group sync failed")

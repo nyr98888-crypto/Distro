@@ -36,6 +36,14 @@ const bodySchema = z.object({
 
 const DEFAULT_TAGS = JSON.stringify(["פייסבוק", "אישי"]);
 
+function isValidGroupName(name: string | undefined | null, externalId: string) {
+  const n = (name || "").trim();
+  if (!n) return false;
+  if (n === String(externalId)) return false;
+  if (/^\d{5,}$/.test(n)) return false;
+  return true;
+}
+
 async function upsertChannel(
   accountId: string,
   item: {
@@ -54,12 +62,26 @@ async function upsertChannel(
     `https://www.facebook.com/groups/${item.externalId}`;
   const memberCount = item.memberCount ?? 0;
   const categoryTags = item.tags || DEFAULT_TAGS;
+  const incomingValid = isValidGroupName(item.name, item.externalId);
 
   if (existing) {
+    const existingName = String(existing.name || "").trim();
+    const existingIsIdOnly =
+      !existingName ||
+      existingName === String(item.externalId) ||
+      /^\d{5,}$/.test(existingName);
+
+    // Prefer a real scraped title — always overwrite id-only / stale names when valid.
+    const nextName = incomingValid
+      ? item.name.trim()
+      : existingIsIdOnly
+        ? existing.name
+        : existing.name;
+
     return db.channel.update({
       where: { id: existing.id },
       data: {
-        name: item.name,
+        name: nextName,
         memberCount:
           memberCount > 0 ? memberCount : existing.memberCount || 0,
         url,
@@ -69,11 +91,16 @@ async function upsertChannel(
     });
   }
 
+  if (!incomingValid) {
+    // Do not create rows whose only "name" is the numeric facebookGroupId.
+    return null;
+  }
+
   return db.channel.create({
     data: {
       accountId,
       externalId: item.externalId,
-      name: item.name,
+      name: item.name.trim(),
       memberCount,
       url,
       categoryTags,
@@ -170,13 +197,13 @@ export async function POST(request: NextRequest) {
       for (const g of body.groups) {
         const externalId = g.facebookGroupId || g.id;
         if (!externalId) continue;
-        await upsertChannel(account.id, {
+        const saved = await upsertChannel(account.id, {
           externalId,
           name: g.name,
           memberCount: g.memberCount,
           url: g.url,
         });
-        extensionCount += 1;
+        if (saved) extensionCount += 1;
       }
     }
 

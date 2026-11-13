@@ -60,9 +60,26 @@ export function getFacebookCredentials(): {
   return { clientId, clientSecret };
 }
 
-/** Build the OAuth callback URL from the live request origin (localhost or Vercel). */
-export function buildFacebookRedirectUri(origin: string): string {
-  return `${origin.replace(/\/$/, "")}/api/auth/facebook/callback`;
+/** Production app origin — must match Meta Valid OAuth Redirect URIs byte-for-byte. */
+export const FACEBOOK_OAUTH_PRODUCTION_ORIGIN = "https://distro-ecru.vercel.app";
+
+function resolveFacebookOAuthOrigin(requestOrigin?: string): string {
+  const req = (requestOrigin || "").replace(/\/$/, "");
+  // Local dev only — production / preview always pin to the registered Meta URI host.
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(req)) {
+    return req;
+  }
+  return FACEBOOK_OAUTH_PRODUCTION_ORIGIN;
+}
+
+/**
+ * Build the OAuth callback URL.
+ * Non-local always uses https://distro-ecru.vercel.app/api/auth/facebook/callback
+ * so it matches Meta's Valid OAuth Redirect URIs byte-for-byte.
+ */
+export function buildFacebookRedirectUri(origin?: string): string {
+  const base = resolveFacebookOAuthOrigin(origin);
+  return `${base}/api/auth/facebook/callback`;
 }
 
 export function createOAuthState(): string {
@@ -96,9 +113,9 @@ export function buildFacebookAuthUrl(
     redirect_uri: redirectUri,
     state,
     response_type: "code",
-    // Basic scopes only — pages_* require App Review and fail in development.
-    // Graph sync still attempts /me/groups + /me/accounts with whatever Meta grants.
-    scope: "public_profile,email",
+    // Login only — Chrome extension handles group access. Do NOT request
+    // groups_access_member_info, publish_to_groups, or other restricted scopes.
+    scope: "public_profile",
   });
   return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 }
@@ -168,7 +185,8 @@ export async function exchangeFacebookCode(
   const accessToken = await exchangeForLongLivedToken(tokenJson.access_token);
 
   const meUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me`);
-  meUrl.searchParams.set("fields", "id,name,email,picture.type(large)");
+  // public_profile only — email is optional if Meta still grants it.
+  meUrl.searchParams.set("fields", "id,name,picture.type(large)");
   meUrl.searchParams.set("access_token", accessToken);
 
   const meRes = await fetch(meUrl.toString(), { method: "GET" });

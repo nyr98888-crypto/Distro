@@ -229,8 +229,6 @@
   }
 
   function scrapeFacebookGroupsFromDom() {
-    const byId = new Map();
-
     const NAME_NOISE = [
       /\s*פעילות אחרונה[\s\S]*$/i,
       /\s*פוסטים חדשים(?:\s+היום)?[\s\S]*$/i,
@@ -241,8 +239,28 @@
       /\s*[·•|].*$/,
     ];
 
+    const GENERIC_LABELS = new Set([
+      "visit",
+      "visit group",
+      "joined",
+      "join",
+      "join group",
+      "see group",
+      "view group",
+      "group",
+      "בקר",
+      "בקר בקבוצה",
+      "חבר",
+      "חברה",
+      "חבר/ה",
+      "הצטרף",
+      "הצטרפי",
+      "הצטרפות",
+      "קבוצה",
+    ]);
+
     const nameLooksNoisy = (name) =>
-      /פעילות אחרונה|פוסטים חדשים|Last active|Active now|New posts?|members?|חברים|תויגו על ידי|לא נקראו/i.test(
+      /פעילות אחרונה|פוסטים חדשים|Last active|Active now|New posts?|members?|חברים|תויגו על ידי|לא נקראו|כולם תויגו/i.test(
         name || ""
       );
 
@@ -257,6 +275,18 @@
         name = name.replace(re, "").trim();
       }
       return name;
+    };
+
+    /** True when text is a usable human group title (not id / UI chrome). */
+    const isUsableGroupTitle = (raw, facebookGroupId) => {
+      const name = cleanGroupName(raw);
+      if (!name || name.length < 2) return false;
+      if (facebookGroupId && name === String(facebookGroupId)) return false;
+      if (/^\d{5,}$/.test(name)) return false;
+      if (GENERIC_LABELS.has(name.toLowerCase())) return false;
+      if (nameLooksNoisy(name) && name.length < 8) return false;
+      if (/תויגו על ידי|לא נקראו|כולם תויגו/i.test(name)) return false;
+      return true;
     };
 
     const parseMembers = (text) => {
@@ -322,86 +352,67 @@
         return anchor.parentElement?.parentElement || anchor.parentElement;
       })();
 
-    const extractGroupName = (anchor, card) => {
-      const aria = (anchor.getAttribute("aria-label") || "").trim();
-      const inner = (anchor.innerText || anchor.textContent || "")
-        .replace(/\s+/g, " ")
-        .trim();
-      const candidates = [];
-      if (inner) candidates.push(inner);
-      if (aria) candidates.push(aria);
-      const inLink =
-        anchor.querySelector('span[dir="auto"]') ||
-        anchor.querySelector("span") ||
-        null;
-      if (inLink?.textContent?.trim()) candidates.push(inLink.textContent);
+    /** Collect title candidates from one anchor + its card (never stop on empty image links). */
+    const collectTitleCandidates = (anchor, card) => {
+      const out = [];
+      const push = (raw) => {
+        const t = (raw || "").replace(/\s+/g, " ").trim();
+        if (t) out.push(t);
+      };
+
+      push(anchor.innerText || anchor.textContent || "");
+      push(anchor.getAttribute("aria-label") || "");
+
+      anchor.querySelectorAll('span[dir="auto"], span').forEach((span) => {
+        push(span.textContent || "");
+      });
+
       if (card) {
         for (const sel of [
+          'a[href*="/groups/"] span[dir="auto"]',
+          'a[href*="/groups/"] span',
           'a[role="link"] span[dir="auto"]',
           'a[role="link"] span',
           "h2",
           "h3",
           "strong",
+          'span[dir="auto"]',
         ]) {
-          const el = card.querySelector(sel);
-          if (el?.textContent?.trim()) candidates.push(el.textContent);
+          card.querySelectorAll(sel).forEach((el) => {
+            // Prefer short title nodes — skip huge containers.
+            const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+            if (text && text.length <= 120) push(text);
+          });
         }
       }
+      return out;
+    };
 
+    /** Prefer longest non-noisy human title; never fall back to the numeric id. */
+    const pickBestTitle = (candidates, facebookGroupId) => {
       let best = "";
+      let bestScore = -1;
       for (const raw of candidates) {
         const cleaned = cleanGroupName(raw);
-        if (cleaned.length < 2) continue;
-        if (!best) best = cleaned;
-        if (!nameLooksNoisy(cleaned)) {
-          if (nameLooksNoisy(best) || cleaned.length <= best.length) {
-            best = cleaned;
-          }
+        if (!isUsableGroupTitle(cleaned, facebookGroupId)) continue;
+        const noisy = nameLooksNoisy(cleaned);
+        // Longer titles win; non-noisy beats noisy of similar length.
+        const score = cleaned.length + (noisy ? 0 : 40);
+        if (score > bestScore) {
+          bestScore = score;
+          best = cleaned;
         }
       }
-      return best || cleanGroupName(inner || aria || "");
+      return best;
     };
 
-    const addGroup = (id, name, memberCount, url) => {
-      if (!id) return;
-      const cleanName = cleanGroupName(name) || String(id);
-      if (cleanName.length < 1) return;
-      if (/תויגו על ידי|לא נקראו|כולם תויגו/i.test(cleanName)) return;
-      const nextCount = Number.isFinite(memberCount) ? memberCount : undefined;
-      const prev = byId.get(id);
-      if (!prev) {
-        byId.set(id, {
-          id: String(id),
-          facebookGroupId: String(id),
-          name: cleanName,
-          memberCount: nextCount,
-          url: url || `https://www.facebook.com/groups/${id}`,
-        });
-        return;
-      }
-      let bestName = prev.name;
-      if (!nameLooksNoisy(cleanName) && nameLooksNoisy(prev.name)) {
-        bestName = cleanName;
-      } else if (
-        !nameLooksNoisy(cleanName) &&
-        cleanName.length > 0 &&
-        cleanName.length < prev.name.length
-      ) {
-        bestName = cleanName;
-      } else if (nameLooksNoisy(prev.name) && cleanName.length >= 2) {
-        bestName = cleanName;
-      }
-      byId.set(id, {
-        ...prev,
-        name: bestName,
-        memberCount: nextCount && nextCount > 0 ? nextCount : prev.memberCount,
-        url: prev.url || url || `https://www.facebook.com/groups/${id}`,
-      });
-    };
+    // Group all /groups/ anchors by facebookGroupId first (avatar links often have empty text).
+    /** @type {Map<string, { anchors: Element[], cards: Element[], urls: string[] }>} */
+    const buckets = new Map();
 
     document.querySelectorAll('a[href*="/groups/"]').forEach((a) => {
       const href = a.href || a.getAttribute("href") || "";
-      if (/\/groups\/[^/]+\/(user|members|permalink|posts)/i.test(href)) {
+      if (/\/groups\/[^/]+\/(user|members|permalink|posts|media|files|events)/i.test(href)) {
         return;
       }
       let id = parseFacebookGroupId(href);
@@ -415,16 +426,64 @@
         if (dm) id = dm[1];
       }
       if (!id) return;
-      addGroup(
-        id,
-        extractGroupName(a, card),
-        findMemberCount(card),
-        href.split("?")[0]
-      );
+
+      const bucket = buckets.get(id) || { anchors: [], cards: [], urls: [] };
+      bucket.anchors.push(a);
+      if (card) bucket.cards.push(card);
+      if (href) bucket.urls.push(href.split("?")[0].split("#")[0]);
+      buckets.set(id, bucket);
     });
 
+    const groups = [];
+    for (const [facebookGroupId, bucket] of buckets.entries()) {
+      const candidates = [];
+      for (const anchor of bucket.anchors) {
+        const card =
+          findCard(anchor) ||
+          bucket.cards[0] ||
+          null;
+        candidates.push(...collectTitleCandidates(anchor, card));
+      }
+      // Also scan each unique card once for title spans tied to this id.
+      const seenCards = new Set();
+      for (const card of bucket.cards) {
+        if (!card || seenCards.has(card)) continue;
+        seenCards.add(card);
+        card
+          .querySelectorAll(`a[href*="/groups/${facebookGroupId}"]`)
+          .forEach((a) => {
+            candidates.push(...collectTitleCandidates(a, card));
+          });
+      }
+
+      const name = pickBestTitle(candidates, facebookGroupId);
+      if (!name || name === String(facebookGroupId)) {
+        // Skip entries with no real title — do not save numeric id as name.
+        continue;
+      }
+
+      let memberCount;
+      for (const card of bucket.cards) {
+        memberCount = findMemberCount(card);
+        if (memberCount) break;
+      }
+
+      const url =
+        bucket.urls.find((u) => u.includes(`/groups/${facebookGroupId}`)) ||
+        `https://www.facebook.com/groups/${facebookGroupId}`;
+
+      groups.push({
+        id: String(facebookGroupId),
+        facebookGroupId: String(facebookGroupId),
+        name,
+        memberCount,
+        url,
+      });
+    }
+
+    console.log("[DISTRO] Extracted groups:", groups);
     return {
-      groups: Array.from(byId.values()),
+      groups,
       pageUrl: location.href,
     };
   }
@@ -438,7 +497,6 @@
     const profile = extractFacebookProfile();
     const scraped = scrapeFacebookGroupsFromDom();
     const groups = scraped.groups || [];
-    console.log("[DISTRO] Scraped groups:", groups.length, groups[0]);
     return {
       groups,
       fbUserName: profile.name,
@@ -1362,14 +1420,24 @@
             return;
           }
           const scraped = await scrapeFacebookGroups();
-          const groups = (scraped.groups || []).map((g) => ({
-            facebookGroupId: String(g.id),
-            id: String(g.id),
-            name: g.name,
-            url: g.url || `https://www.facebook.com/groups/${g.id}`,
-            memberCount:
-              typeof g.memberCount === "number" ? g.memberCount : 0,
-          }));
+          const groups = (scraped.groups || [])
+            .map((g) => {
+              const id = String(g.id || g.facebookGroupId || "").trim();
+              const name = String(g.name || "").trim();
+              if (!id || !name || name === id || /^\d{5,}$/.test(name)) {
+                return null;
+              }
+              return {
+                facebookGroupId: id,
+                id,
+                name,
+                url: g.url || `https://www.facebook.com/groups/${id}`,
+                memberCount:
+                  typeof g.memberCount === "number" ? g.memberCount : 0,
+              };
+            })
+            .filter(Boolean);
+          console.log("[DISTRO] Extracted groups:", groups);
           sendResponse({
             ok: true,
             groups,

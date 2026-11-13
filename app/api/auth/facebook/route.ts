@@ -25,7 +25,8 @@ function requestOrigin(request: NextRequest): string {
 
 /**
  * GET /api/auth/facebook
- * Start Facebook Login — redirect to Meta dialog with origin-based redirect_uri.
+ * Start Facebook Login — redirect to Meta dialog.
+ * redirect_uri is pinned to https://distro-ecru.vercel.app/... (localhost for local).
  * Optional: ?callbackUrl=/dashboard/channels or ?redirect=/dashboard/channels
  */
 export async function GET(request: NextRequest) {
@@ -33,8 +34,13 @@ export async function GET(request: NextRequest) {
   try {
     getFacebookCredentials();
     const state = createOAuthState();
+    // Explicit production callback — must match Meta Valid OAuth Redirect URIs.
     const redirectUri = buildFacebookRedirectUri(origin);
     const url = buildFacebookAuthUrl(state, redirectUri);
+    console.info("[auth/facebook] starting oauth", {
+      redirectUri,
+      scope: "public_profile",
+    });
     const postLoginPath = sanitizePostLoginPath(
       request.nextUrl.searchParams.get("callbackUrl") ||
         request.nextUrl.searchParams.get("redirect")

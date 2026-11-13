@@ -292,15 +292,20 @@ async function apiFetchJson(path, options = {}) {
 
 /** POST scraped groups to Turso via /api/groups/sync (Bearer + credentials). */
 async function postGroupsSync(groups) {
-  const groupsForApi = (groups || []).map((g) => ({
-    facebookGroupId: String(g.facebookGroupId || g.id || ""),
-    id: String(g.id || g.facebookGroupId || ""),
-    name: g.name || String(g.facebookGroupId || g.id || "Group"),
-    memberCount: typeof g.memberCount === "number" ? g.memberCount : 0,
-    url:
-      g.url ||
-      `https://www.facebook.com/groups/${g.facebookGroupId || g.id}`,
-  }));
+  const groupsForApi = (groups || [])
+    .map((g) => {
+      const id = String(g.facebookGroupId || g.id || "").trim();
+      const name = String(g.name || "").trim();
+      if (!id || !name || name === id || /^\d{5,}$/.test(name)) return null;
+      return {
+        facebookGroupId: id,
+        id,
+        name,
+        memberCount: typeof g.memberCount === "number" ? g.memberCount : 0,
+        url: g.url || `https://www.facebook.com/groups/${id}`,
+      };
+    })
+    .filter(Boolean);
   const data = await apiFetchJson("/api/groups/sync", {
     method: "POST",
     body: JSON.stringify({ groups: groupsForApi, cleanupFakes: true }),
@@ -1051,16 +1056,23 @@ async function scrapeJoinedGroupsForWeb() {
     };
   }
 
-  const groups = (result.groups || []).map((g) => ({
-    facebookGroupId: String(g.facebookGroupId || g.id),
-    id: String(g.facebookGroupId || g.id),
-    name: g.name,
-    url: g.url || `https://www.facebook.com/groups/${g.facebookGroupId || g.id}`,
-    memberCount:
-      typeof g.memberCount === "number" ? g.memberCount : 0,
-  }));
+  const groups = (result.groups || [])
+    .map((g) => {
+      const id = String(g.facebookGroupId || g.id || "").trim();
+      const name = String(g.name || "").trim();
+      if (!id || !name || name === id || /^\d{5,}$/.test(name)) return null;
+      return {
+        facebookGroupId: id,
+        id,
+        name,
+        url: g.url || `https://www.facebook.com/groups/${id}`,
+        memberCount:
+          typeof g.memberCount === "number" ? g.memberCount : 0,
+      };
+    })
+    .filter(Boolean);
 
-  console.log("[DISTRO] Scraped groups:", groups.length, groups[0]);
+  console.log("[DISTRO] Extracted groups:", groups);
 
   chrome.storage.local.set({
     syncedGroups: groups.map((g) => ({

@@ -33,45 +33,74 @@ function clearOAuthCookies(res: NextResponse): void {
   res.cookies.set(POST_LOGIN_COOKIE, "", { path: "/", maxAge: 0 });
 }
 
-function redirectToLogin(
-  origin: string,
-  errorMessage: string
+function fail(
+  step: string,
+  error: unknown,
+  extra?: Record<string, string | null | undefined>
 ): NextResponse {
-  const url = new URL("/signin", origin);
-  url.searchParams.set("error", errorMessage);
-  const res = NextResponse.redirect(url);
-  clearOAuthCookies(res);
-  return res;
-}
-
-function fail(step: string, error: unknown): NextResponse {
   const message =
     error instanceof Error ? error.message : String(error || "unknown error");
-  console.error(`[auth/facebook/callback] step=${step}`, message);
-  return NextResponse.json({ step, error: message }, { status: 500 });
+  console.error(`[auth/facebook/callback] step=${step}`, message, extra || "");
+  return NextResponse.json(
+    {
+      step,
+      error: message,
+      ...(extra
+        ? Object.fromEntries(
+            Object.entries(extra).filter(([, v]) => v != null && v !== "")
+          )
+        : {}),
+    },
+    { status: 500 }
+  );
 }
 
 /**
  * GET /api/auth/facebook/callback
  * Meta OAuth → Turso User + ConnectedAccount + session cookie → /dashboard/channels.
- * Failures (except Meta cancel) return JSON 500 with { step, error } — never a fake success redirect.
+ * Failures return JSON 500 with { step, error } — never a fake success redirect.
  */
 export async function GET(request: NextRequest) {
   const origin = requestOrigin(request);
-
   const { searchParams } = request.nextUrl;
+
+  // Surface Meta rejection details BEFORE treating the callback as missing_code.
+  // Meta may send either OAuth-standard params (error / error_description) OR
+  // Facebook-specific ones (error_code / error_message) — e.g. 1349168 when
+  // redirect_uri is not in Valid OAuth Redirect URIs.
   const oauthError = searchParams.get("error");
+  const errorReason = searchParams.get("error_reason");
   const errorDescription = searchParams.get("error_description");
-  if (oauthError) {
-    console.error(
-      "[auth/facebook/callback] oauth error:",
-      oauthError,
-      errorDescription
-    );
-    return redirectToLogin(
-      origin,
-      errorDescription || oauthError || "Facebook Login was cancelled"
-    );
+  const errorCode = searchParams.get("error_code");
+  const errorMessage = searchParams.get("error_message");
+  if (
+    oauthError ||
+    errorDescription ||
+    errorReason ||
+    errorCode ||
+    errorMessage
+  ) {
+    const detail =
+      errorMessage ||
+      errorDescription ||
+      errorReason ||
+      oauthError ||
+      (errorCode ? `Facebook error_code=${errorCode}` : null) ||
+      "Facebook Login was cancelled";
+    console.error("[auth/facebook/callback] oauth error from Meta:", {
+      error: oauthError,
+      error_reason: errorReason,
+      error_description: errorDescription,
+      error_code: errorCode,
+      error_message: errorMessage,
+    });
+    return fail("facebook_oauth_error", new Error(detail), {
+      error: oauthError,
+      error_reason: errorReason,
+      error_description: errorDescription,
+      error_code: errorCode,
+      error_message: errorMessage,
+    });
   }
 
   const code = searchParams.get("code");
@@ -84,7 +113,20 @@ export async function GET(request: NextRequest) {
     request.cookies.get(SESSION_COOKIE_NAME)?.value || null;
 
   if (!code) {
-    return fail("missing_code", new Error("Missing Facebook authorization code"));
+    return fail(
+      "missing_code",
+      new Error(
+        "Missing Facebook authorization code (no code and no error from Meta — check redirect_uri registration)"
+      ),
+      {
+        error: searchParams.get("error"),
+        error_reason: searchParams.get("error_reason"),
+        error_description: searchParams.get("error_description"),
+        error_code: searchParams.get("error_code"),
+        error_message: searchParams.get("error_message"),
+        redirect_uri: storedRedirect,
+      }
+    );
   }
   if (!verifyOAuthState(state) || !cookieState || cookieState !== state) {
     return fail(
@@ -162,6 +204,6 @@ export async function GET(request: NextRequest) {
     clearOAuthCookies(res);
     return res;
   } catch (error) {
-    return fail(step, error);
+    return fail(step, error, { redirect_uri: storedRedirect });
   }
 }

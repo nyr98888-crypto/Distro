@@ -9,7 +9,12 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
+import {
+  pingExtensionAsync,
+  requestExtensionScrapeGroups,
+} from "@/lib/extension-bridge";
 import { useI18n } from "@/lib/i18n";
+import { CHROME_STORE_URL } from "@/lib/support";
 import { cn } from "@/lib/utils";
 
 export type FacebookAccountListItem = {
@@ -127,14 +132,52 @@ export function FacebookAccountBar({
   }
 
   async function syncActiveAccount() {
+    // Same extension scrape flow as /dashboard/channels — no Facebook OAuth redirect.
     setBusy(true);
     setMessage(null);
     try {
+      const hasExt = await pingExtensionAsync();
+      if (!hasExt) {
+        window.open(CHROME_STORE_URL, "_blank", "noopener,noreferrer");
+        setMessage(
+          dir === "rtl"
+            ? "התקינו את תוסף DISTRO ואז סנכרנו שוב"
+            : "Install the DISTRO extension, then sync again"
+        );
+        return;
+      }
+
+      const scraped = await new Promise<{
+        ok: boolean;
+        groups?: Array<{
+          facebookGroupId: string;
+          name: string;
+          url?: string;
+          memberCount?: number;
+        }>;
+        error?: string;
+      }>((resolve) => {
+        requestExtensionScrapeGroups((result) => resolve(result));
+      });
+
+      if (!scraped.ok) {
+        setMessage(
+          scraped.error ||
+            (dir === "rtl"
+              ? "התוסף לא הצליח לקרוא קבוצות"
+              : "Extension could not scrape groups")
+        );
+        return;
+      }
+
       const res = await fetch("/api/groups/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ groups: [], cleanupFakes: true }),
+        body: JSON.stringify({
+          groups: scraped.groups || [],
+          cleanupFakes: true,
+        }),
       });
       const data = (await res.json().catch(() => null)) as {
         success?: boolean;
@@ -145,8 +188,11 @@ export function FacebookAccountBar({
       } | null;
       if (!res.ok || !data?.success) {
         if (data?.needsReauth) {
-          window.location.href =
-            "/api/auth/facebook?callbackUrl=%2Fdashboard%2Fchannels";
+          setMessage(
+            dir === "rtl"
+              ? "יש להתחבר ל-DISTRO תחילה (בלי OAuth לקבוצות)"
+              : "Sign in to DISTRO first (group sync does not use Facebook OAuth)"
+          );
           return;
         }
         setMessage(data?.error || "הסנכרון נכשל");
