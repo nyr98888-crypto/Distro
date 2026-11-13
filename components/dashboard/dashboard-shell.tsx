@@ -13,6 +13,11 @@ import {
   X,
 } from "lucide-react";
 import { FacebookAccountBar } from "@/components/dashboard/facebook-account-bar";
+import {
+  ExtensionHeaderStatus,
+  ExtensionInstallBanner,
+  useExtensionInstalled,
+} from "@/components/dashboard/extension-status-bar";
 import { SidebarHeader } from "@/components/dashboard/sidebar-header";
 import {
   I18nProvider,
@@ -168,6 +173,7 @@ function ShellInner({
   const { dir, locale, t } = useI18n();
   const isRtl = dir === "rtl";
   const support = supportHref(locale || "he") || "mailto:support@distro.app";
+  const extensionInstalled = useExtensionInstalled();
 
   React.useEffect(() => {
     setMobileOpen(false);
@@ -229,29 +235,35 @@ function ShellInner({
           isRtl ? "md:pr-[260px]" : "md:pl-[260px]"
         )}
       >
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200/80 bg-[#F8FAFC]/90 px-4 py-3 backdrop-blur sm:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setMobileOpen(true)}
-              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-700 shadow-sm md:hidden"
-              aria-label={t("menu")}
-            >
-              {mobileOpen ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Menu className="h-5 w-5" />
-              )}
-            </button>
-            <LanguageToggle />
-          </div>
-          <span className="text-sm font-bold tracking-wide text-slate-800 md:hidden">
-            DISTRO
-          </span>
-          <span className="hidden text-xs text-slate-400 sm:inline md:ms-auto">
-            v1.0.0 Beta
-          </span>
-        </header>
+        <div className="sticky top-0 z-30">
+          <ExtensionInstallBanner installed={extensionInstalled} />
+          <header className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-[#F8FAFC]/90 px-4 py-3 backdrop-blur sm:px-6">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setMobileOpen(true)}
+                className="rounded-lg border border-slate-200 bg-white p-2 text-slate-700 shadow-sm md:hidden"
+                aria-label={t("menu")}
+              >
+                {mobileOpen ? (
+                  <X className="h-5 w-5" />
+                ) : (
+                  <Menu className="h-5 w-5" />
+                )}
+              </button>
+              <LanguageToggle />
+            </div>
+            <span className="text-sm font-bold tracking-wide text-slate-800 md:hidden">
+              DISTRO
+            </span>
+            <div className="flex items-center gap-2 md:ms-auto">
+              <ExtensionHeaderStatus installed={extensionInstalled} />
+              <span className="hidden text-xs text-slate-400 sm:inline">
+                v1.0.1
+              </span>
+            </div>
+          </header>
+        </div>
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>

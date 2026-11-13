@@ -15,9 +15,13 @@ import {
 import { syncGroupsFromGraph } from "@/lib/facebook-oauth";
 import { db } from "@/lib/db";
 
+/** Numeric Facebook id (≥5 digits) or vanity slug — not nav paths. */
+const GROUP_ID_RE =
+  /^(?:\d{5,}|(?!feed$|discover$|joins$|create$|search$)[A-Za-z0-9._-]{2,100})$/i;
+
 const groupSchema = z.object({
-  facebookGroupId: z.string().regex(/^\d{5,}$/).optional(),
-  id: z.string().regex(/^\d{5,}$/).optional(),
+  facebookGroupId: z.string().regex(GROUP_ID_RE).optional(),
+  id: z.string().regex(GROUP_ID_RE).optional(),
   name: z.string().min(1),
   memberCount: z.number().int().nonnegative().optional(),
   url: z.string().optional().or(z.literal("")),

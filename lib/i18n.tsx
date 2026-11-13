@@ -127,6 +127,10 @@ const dictionary = {
     installAfterTitle: "אחרי ההתקנה",
     installAfterBody:
       "פתחו את פייסבוק, לחצו על אייקון DISTRO בסרגל התוספים, ולחצו על סנכרון קבוצות.",
+    extensionDownloadCta: "הורד והתקן את תוסף DISTRO לכרום",
+    extensionConnected: "התוסף מחובר",
+    extensionBannerHint:
+      "נדרש לסנכרון קבוצות ולפרסום מקומי — התקינו מחנות Chrome ואז חזרו לכאן.",
     privacyLastUpdated: "עודכן לאחרונה: נובמבר 2026",
     privacyIntro:
       'DISTRO ("אנחנו", "שלנו" או "התוסף") נבנה במודל פרטיות מקומי־קודם (local-first).',
@@ -269,6 +273,10 @@ const dictionary = {
     installAfterTitle: "After installing",
     installAfterBody:
       "Open Facebook, click the DISTRO icon in the extensions toolbar, then Sync Groups.",
+    extensionDownloadCta: "Download & install the DISTRO Chrome extension",
+    extensionConnected: "Extension Connected",
+    extensionBannerHint:
+      "Required for group sync and local publishing — install from the Chrome Web Store, then return here.",
     privacyLastUpdated: "Last updated: November 2026",
     privacyIntro:
       'DISTRO ("we", "our", or "the extension") is designed with a strict local-first privacy model.',

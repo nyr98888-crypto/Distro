@@ -11,9 +11,11 @@ import {
 import {
   onExtensionReady,
   pingExtension,
+  pingExtensionAsync,
   requestExtensionScrapeGroups,
 } from "@/lib/extension-bridge";
 import { useI18n } from "@/lib/i18n";
+import { CHROME_STORE_URL } from "@/lib/support";
 
 type ChannelsClientProps = {
   accountId: string | null;
@@ -33,47 +35,22 @@ export function ChannelsClient({
   const [extensionReady, setExtensionReady] = React.useState<boolean | null>(
     null
   );
+  const [awaitingInstall, setAwaitingInstall] = React.useState(false);
+  const awaitingInstallRef = React.useRef(false);
+  const syncInFlightRef = React.useRef(false);
+  const runGroupSyncRef = React.useRef<() => Promise<void>>(async () => {});
 
   const stats = React.useMemo(
     () => computeChannelStats(channels),
     [channels]
   );
 
-  React.useEffect(() => {
-    const unsub = onExtensionReady(() => setExtensionReady(true));
-    // Proactive ping so the dashboard recognizes an already-loaded bridge
-    pingExtension((ok) => {
-      if (ok) setExtensionReady(true);
-      else setExtensionReady((prev) => (prev === true ? true : false));
-    });
-    return unsub;
-  }, []);
-
-  async function syncGroups() {
+  const runGroupSync = React.useCallback(async () => {
+    if (syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
     setSyncing(true);
     setSyncMessage(null);
     try {
-      const hasExt = await new Promise<boolean>((resolve) => {
-        pingExtension((ok) => resolve(ok));
-      });
-      setExtensionReady(hasExt);
-
-      if (!hasExt) {
-        setSyncMessage(
-          dir === "rtl"
-            ? "יש להתקין את תוסף DISTRO בכרום ולרענן את העמוד — סנכרון קבוצות דורש את התוסף"
-            : "Install the DISTRO Chrome extension and refresh — group sync requires the extension"
-        );
-        // Still purge fakes server-side
-        await fetch("/api/groups/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ groups: [], cleanupFakes: true }),
-        }).catch(() => null);
-        return;
-      }
-
       setSyncMessage(
         dir === "rtl"
           ? "פותח את רשימת הקבוצות בפייסבוק…"
@@ -177,12 +154,127 @@ export function ChannelsClient({
             : "Sync error"
       );
     } finally {
+      syncInFlightRef.current = false;
       setSyncing(false);
     }
-  }
+  }, [dir]);
+
+  runGroupSyncRef.current = runGroupSync;
+
+  const beginAutoSyncAfterInstall = React.useCallback(() => {
+    if (!awaitingInstallRef.current || syncInFlightRef.current) return;
+    awaitingInstallRef.current = false;
+    setAwaitingInstall(false);
+    setExtensionReady(true);
+    setSyncMessage(
+      dir === "rtl"
+        ? "התוסף זוהה — מתחילים סנכרון קבוצות…"
+        : "Extension detected — starting group sync…"
+    );
+    void runGroupSyncRef.current();
+  }, [dir]);
+
+  React.useEffect(() => {
+    const unsub = onExtensionReady(() => {
+      setExtensionReady(true);
+      beginAutoSyncAfterInstall();
+    });
+    pingExtension((ok) => {
+      if (ok) setExtensionReady(true);
+      else setExtensionReady((prev) => (prev === true ? true : false));
+    });
+    return unsub;
+  }, [beginAutoSyncAfterInstall]);
+
+  const handleSyncClick = React.useCallback(async () => {
+    if (syncInFlightRef.current) return;
+
+    const hasExt = await pingExtensionAsync();
+    setExtensionReady(hasExt);
+
+    if (!hasExt) {
+      const storeUrl = CHROME_STORE_URL;
+      if (storeUrl) {
+        window.open(storeUrl, "_blank", "noopener,noreferrer");
+      }
+      awaitingInstallRef.current = true;
+      setAwaitingInstall(true);
+      setSyncMessage(
+        dir === "rtl"
+          ? "התקן את התוסף בחלון שנפתח ולאחר מכן חזור לכאן לסנכרון אוטומטי"
+          : "Install the extension in the window that opened, then return here for automatic sync"
+      );
+      return;
+    }
+
+    awaitingInstallRef.current = false;
+    setAwaitingInstall(false);
+    await runGroupSync();
+  }, [dir, runGroupSync]);
+
+  React.useEffect(() => {
+    const recheckAfterInstall = () => {
+      if (!awaitingInstallRef.current || syncInFlightRef.current) return;
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+
+      pingExtension((ok) => {
+        if (!ok) return;
+        beginAutoSyncAfterInstall();
+      });
+    };
+
+    const onFocus = () => recheckAfterInstall();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") recheckAfterInstall();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [beginAutoSyncAfterInstall]);
+
+  const buttonLabel =
+    extensionReady === false
+      ? dir === "rtl"
+        ? "התקן תוסף"
+        : "Install Extension"
+      : t("syncGroups");
 
   return (
     <div className="space-y-6">
+      {extensionReady === false ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
+          <p className="text-sm font-medium text-sky-950">
+            {dir === "rtl"
+              ? "הורד והתקן את תוסף DISTRO לכרום"
+              : "Download & install the DISTRO Chrome extension"}
+          </p>
+          <a
+            href={CHROME_STORE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#4285F4] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3367D6]"
+          >
+            {dir === "rtl" ? "הורדה מחנות Chrome" : "Get it on Chrome Web Store"}
+          </a>
+        </div>
+      ) : extensionReady === true ? (
+        <p
+          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
+          role="status"
+        >
+          {dir === "rtl" ? "התוסף מחובר" : "Extension Connected"}
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
           {dir === "rtl"
@@ -196,7 +288,7 @@ export function ChannelsClient({
         <button
           type="button"
           disabled={syncing}
-          onClick={() => void syncGroups()}
+          onClick={() => void handleSyncClick()}
           className="inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1D4ED8] disabled:opacity-60"
         >
           {syncing ? (
@@ -204,12 +296,21 @@ export function ChannelsClient({
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}
-          {t("syncGroups")}
+          {buttonLabel}
         </button>
       </div>
 
       {syncMessage ? (
-        <p className="text-sm text-slate-600">{syncMessage}</p>
+        <p
+          className={`rounded-lg px-3 py-2 text-sm ${
+            awaitingInstall
+              ? "border border-amber-200 bg-amber-50 text-amber-900"
+              : "text-slate-600"
+          }`}
+          role="status"
+        >
+          {syncMessage}
+        </p>
       ) : null}
       <ChannelStatsCards stats={stats} />
       <ChannelTable

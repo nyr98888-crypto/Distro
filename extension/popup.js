@@ -219,10 +219,38 @@ function scrapeFacebookGroups() {
     return best || cleanGroupName(anchor.textContent || "");
   };
 
+  const RESERVED = new Set([
+    "feed",
+    "discover",
+    "joins",
+    "create",
+    "search",
+    "category",
+    "requests",
+    "notifications",
+  ]);
+
+  const parseGroupId = (href) => {
+    if (!href) return null;
+    let path = href;
+    try {
+      path = new URL(href, location.origin).pathname;
+    } catch {
+      path = String(href).split("?")[0];
+    }
+    const m = path.match(/\/groups\/([^/]+)/i);
+    if (!m) return null;
+    const raw = decodeURIComponent(m[1]).trim();
+    if (!raw || RESERVED.has(raw.toLowerCase())) return null;
+    if (/^\d{5,}$/.test(raw)) return raw;
+    if (/^[A-Za-z0-9._-]{2,100}$/.test(raw)) return raw;
+    return null;
+  };
+
   const addGroup = (id, name, memberCount, url) => {
-    if (!id || !/^\d+$/.test(String(id))) return;
-    const cleanName = cleanGroupName(name);
-    if (!cleanName || cleanName.length < 2) return;
+    if (!id) return;
+    const cleanName = cleanGroupName(name) || String(id);
+    if (cleanName.length < 1) return;
 
     const nextCount = Number.isFinite(memberCount) ? memberCount : undefined;
     const prev = byId.get(id);
@@ -230,6 +258,7 @@ function scrapeFacebookGroups() {
     if (!prev) {
       byId.set(id, {
         id: String(id),
+        facebookGroupId: String(id),
         name: cleanName,
         memberCount: nextCount,
         url: url || `https://www.facebook.com/groups/${id}`,
@@ -245,7 +274,6 @@ function scrapeFacebookGroups() {
       cleanName.length > 0 &&
       cleanName.length < prev.name.length
     ) {
-      // Prefer the shorter clean title over a container that swallowed metadata
       bestName = cleanName;
     } else if (nameLooksNoisy(prev.name) && cleanName.length >= 2) {
       bestName = cleanName;
@@ -260,30 +288,27 @@ function scrapeFacebookGroups() {
     });
   };
 
-  // Anchor links to /groups/<id>
   document.querySelectorAll('a[href*="/groups/"]').forEach((a) => {
     const href = a.href || a.getAttribute("href") || "";
-    const m = href.match(/\/groups\/(\d+)/);
-    if (!m) return;
-
-    // Skip nav / chrome links that aren't group cards
-    if (/\/groups\/\d+\/(user|members|permalink)/i.test(href)) return;
-
-    const id = m[1];
+    if (/\/groups\/[^/]+\/(user|members|permalink|posts)/i.test(href)) return;
+    const id = parseGroupId(href);
+    if (!id) return;
     const card = findCard(a);
-    const name = extractGroupName(a, card);
+    const name =
+      extractGroupName(a, card) ||
+      (a.getAttribute("aria-label") || a.innerText || "").trim();
     const memberCount = findMemberCount(card);
-
     addGroup(id, name, memberCount, href.split("?")[0]);
   });
 
-  // Fallback: scan raw HTML for group id patterns near names
   if (byId.size === 0) {
     const html = document.documentElement.innerHTML;
-    const re = /\/groups\/(\d{5,})/g;
+    const re = /\/groups\/(\d{5,}|[A-Za-z0-9._-]{2,100})/g;
     let match;
     while ((match = re.exec(html)) !== null) {
-      addGroup(match[1], `Group ${match[1]}`);
+      const id = match[1];
+      if (RESERVED.has(String(id).toLowerCase())) continue;
+      addGroup(id, `Group ${id}`);
     }
   }
 
@@ -372,11 +397,7 @@ async function scrollAndScrapeFromTab(tabId) {
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
       async function scrollGroupsFeedToEnd() {
-        let lastHeight = document.body.scrollHeight;
-        let retries = 0;
-        let safety = 0;
-        while (retries < 4 && safety < 200) {
-          safety += 1;
+        for (let i = 0; i < 5; i += 1) {
           window.scrollTo(0, document.body.scrollHeight);
           document
             .querySelectorAll(
@@ -391,16 +412,8 @@ async function scrollAndScrapeFromTab(tabId) {
                 /* ignore */
               }
             });
-          await sleep(1500);
-          const newHeight = document.body.scrollHeight;
-          if (newHeight === lastHeight) retries += 1;
-          else {
-            retries = 0;
-            lastHeight = newHeight;
-          }
+          await sleep(800);
         }
-        window.scrollTo(0, 0);
-        await sleep(400);
       }
 
       function getCookieValue(name) {
@@ -522,12 +535,34 @@ async function scrollAndScrapeFromTab(tabId) {
           name || ""
         );
 
+      const RESERVED = new Set([
+        "feed",
+        "discover",
+        "joins",
+        "create",
+        "search",
+        "category",
+        "requests",
+        "notifications",
+      ]);
       document.querySelectorAll('a[href*="/groups/"]').forEach((a) => {
         const href = a.href || a.getAttribute("href") || "";
-        const m = href.match(/\/groups\/(\d+)/);
+        if (/\/groups\/[^/]+\/(user|members|permalink|posts)/i.test(href)) {
+          return;
+        }
+        let path = href;
+        try {
+          path = new URL(href, location.origin).pathname;
+        } catch {
+          path = String(href).split("?")[0];
+        }
+        const m = path.match(/\/groups\/([^/]+)/i);
         if (!m) return;
-        if (/\/groups\/\d+\/(user|members|permalink)/i.test(href)) return;
-        const id = m[1];
+        const id = decodeURIComponent(m[1]).trim();
+        if (!id || RESERVED.has(id.toLowerCase())) return;
+        if (!/^\d{5,}$/.test(id) && !/^[A-Za-z0-9._-]{2,100}$/.test(id)) {
+          return;
+        }
         const card =
           a.closest('[role="listitem"]') ||
           a.closest('[role="article"]') ||
@@ -535,7 +570,8 @@ async function scrollAndScrapeFromTab(tabId) {
           a.parentElement?.parentElement;
         let name =
           cleanGroupName(
-            a.querySelector('span[dir="auto"]')?.textContent ||
+            a.innerText ||
+              a.querySelector('span[dir="auto"]')?.textContent ||
               a.getAttribute("aria-label") ||
               a.textContent ||
               ""
@@ -551,6 +587,7 @@ async function scrollAndScrapeFromTab(tabId) {
         if (!prev || (!nameLooksNoisy(name) && nameLooksNoisy(prev.name))) {
           byId.set(id, {
             id,
+            facebookGroupId: id,
             name,
             url: href.split("?")[0],
           });
@@ -558,8 +595,10 @@ async function scrollAndScrapeFromTab(tabId) {
       });
 
       const profile = extractFacebookProfile();
+      const groups = Array.from(byId.values());
+      console.log("[DISTRO] Scraped groups:", groups.length, groups[0]);
       return {
-        groups: Array.from(byId.values()),
+        groups,
         fbUserName: profile.name,
         fbAvatarUrl: profile.avatarUrl,
         fbProfile: profile,
@@ -650,11 +689,25 @@ async function syncGroups() {
       })),
     });
 
-    const sessionToken = await new Promise((resolve) => {
-      chrome.storage.local.get(["sessionToken"], (stored) => {
-        resolve(stored.sessionToken || null);
+    let sessionToken = await new Promise((resolve) => {
+      chrome.storage.local.get(["sessionToken", "userId"], (stored) => {
+        resolve(stored.sessionToken || stored.userId || null);
       });
     });
+    if (!sessionToken) {
+      const cookie = await chrome.cookies.get({
+        url: API_BASE,
+        name: "distro_user_id",
+      });
+      if (cookie?.value) {
+        sessionToken = cookie.value;
+        await chrome.storage.local.set({
+          sessionToken,
+          userId: sessionToken,
+          authenticatedAt: Date.now(),
+        });
+      }
+    }
 
     const groupsPayload = {
       facebookId: fbUserId,
@@ -689,7 +742,15 @@ async function syncGroups() {
           headers,
           body: JSON.stringify({ groups: groupsForApi }),
         });
-        const body = await res.json().catch(() => ({}));
+        const bodyText = await res.text();
+        const body = (() => {
+          try {
+            return bodyText ? JSON.parse(bodyText) : {};
+          } catch {
+            return {};
+          }
+        })();
+        console.log("[DISTRO] groups/sync →", res.status, body);
         lastStatus = res.status;
         lastError = typeof body.error === "string" ? body.error : "";
         if (res.ok && body.success) {

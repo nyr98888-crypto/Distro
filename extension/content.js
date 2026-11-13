@@ -93,17 +93,10 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  /** Load the full joins list — Facebook renders groups lazily on scroll. */
+  /** Joins page lazy-loads — scroll down 4–5 times with a short delay. */
   async function scrollGroupsFeedToEnd() {
-    let lastHeight = document.body.scrollHeight;
-    let retries = 0;
-    let safety = 0;
-    const maxPasses = 200;
-
-    while (retries < 4 && safety < maxPasses) {
-      safety += 1;
+    for (let i = 0; i < 5; i += 1) {
       window.scrollTo(0, document.body.scrollHeight);
-      // Also nudge common FB scroll containers (virtualized feeds)
       document
         .querySelectorAll('[role="main"], [data-pagelet], div[style*="overflow"]')
         .forEach((el) => {
@@ -115,17 +108,8 @@
             /* ignore */
           }
         });
-      await sleep(1500);
-      const newHeight = document.body.scrollHeight;
-      if (newHeight === lastHeight) {
-        retries += 1;
-      } else {
-        retries = 0;
-        lastHeight = newHeight;
-      }
+      await sleep(800);
     }
-    window.scrollTo(0, 0);
-    await sleep(400);
   }
 
   function extractFacebookProfile() {
@@ -209,6 +193,39 @@
       avatarUrl,
       isConnected: Boolean(cUser),
     };
+  }
+
+  const RESERVED_GROUP_SEGMENTS = new Set([
+    "feed",
+    "discover",
+    "joins",
+    "create",
+    "search",
+    "category",
+    "requests",
+    "notifications",
+  ]);
+
+  /** Numeric id (≥5 digits) or vanity slug — never nav segments. */
+  function parseFacebookGroupId(href) {
+    if (!href) return null;
+    let path = href;
+    try {
+      path = new URL(href, location.origin).pathname;
+    } catch {
+      path = String(href).split("?")[0].split("#")[0];
+    }
+    const m = path.match(/\/groups\/([^/]+)/i);
+    if (!m) return null;
+    const raw = decodeURIComponent(m[1]).trim();
+    if (!raw) return null;
+    if (RESERVED_GROUP_SEGMENTS.has(raw.toLowerCase())) return null;
+    if (/^(user|members|permalink|posts|media|files|events)$/i.test(raw)) {
+      return null;
+    }
+    if (/^\d{5,}$/.test(raw)) return raw;
+    if (/^[A-Za-z0-9._-]{2,100}$/.test(raw)) return raw;
+    return null;
   }
 
   function scrapeFacebookGroupsFromDom() {
@@ -306,7 +323,13 @@
       })();
 
     const extractGroupName = (anchor, card) => {
+      const aria = (anchor.getAttribute("aria-label") || "").trim();
+      const inner = (anchor.innerText || anchor.textContent || "")
+        .replace(/\s+/g, " ")
+        .trim();
       const candidates = [];
+      if (inner) candidates.push(inner);
+      if (aria) candidates.push(aria);
       const inLink =
         anchor.querySelector('span[dir="auto"]') ||
         anchor.querySelector("span") ||
@@ -324,8 +347,6 @@
           if (el?.textContent?.trim()) candidates.push(el.textContent);
         }
       }
-      const aria = anchor.getAttribute("aria-label");
-      if (aria?.trim()) candidates.push(aria);
 
       let best = "";
       for (const raw of candidates) {
@@ -338,19 +359,20 @@
           }
         }
       }
-      return best || cleanGroupName(anchor.textContent || "");
+      return best || cleanGroupName(inner || aria || "");
     };
 
     const addGroup = (id, name, memberCount, url) => {
-      if (!id || !/^\d{5,}$/.test(String(id))) return;
-      const cleanName = cleanGroupName(name);
-      if (!cleanName || cleanName.length < 2) return;
+      if (!id) return;
+      const cleanName = cleanGroupName(name) || String(id);
+      if (cleanName.length < 1) return;
       if (/תויגו על ידי|לא נקראו|כולם תויגו/i.test(cleanName)) return;
       const nextCount = Number.isFinite(memberCount) ? memberCount : undefined;
       const prev = byId.get(id);
       if (!prev) {
         byId.set(id, {
           id: String(id),
+          facebookGroupId: String(id),
           name: cleanName,
           memberCount: nextCount,
           url: url || `https://www.facebook.com/groups/${id}`,
@@ -379,27 +401,22 @@
 
     document.querySelectorAll('a[href*="/groups/"]').forEach((a) => {
       const href = a.href || a.getAttribute("href") || "";
-      const m = href.match(/\/groups\/(\d+)/);
-      if (!m) return;
-      if (/\/groups\/\d+\/(user|members|permalink)/i.test(href)) return;
-      const id = m[1];
+      if (/\/groups\/[^/]+\/(user|members|permalink|posts)/i.test(href)) {
+        return;
+      }
+      let id = parseFacebookGroupId(href);
       const card = findCard(a);
-      addGroup(id, extractGroupName(a, card), findMemberCount(card), href.split("?")[0]);
-    });
-
-    // Also accept vanity /groups/<slug> links that embed numeric id in data attrs
-    document.querySelectorAll('a[href*="/groups/"]').forEach((a) => {
-      const href = a.href || a.getAttribute("href") || "";
-      if (/\/groups\/(\d+)/.test(href)) return;
-      const card = findCard(a);
-      const dataId =
-        a.getAttribute("data-id") ||
-        card?.getAttribute?.("data-id") ||
-        "";
-      const m = String(dataId).match(/(\d{5,})/);
-      if (!m) return;
+      if (!id) {
+        const dataId =
+          a.getAttribute("data-id") ||
+          card?.getAttribute?.("data-id") ||
+          "";
+        const dm = String(dataId).match(/(\d{5,})/);
+        if (dm) id = dm[1];
+      }
+      if (!id) return;
       addGroup(
-        m[1],
+        id,
         extractGroupName(a, card),
         findMemberCount(card),
         href.split("?")[0]
@@ -412,7 +429,7 @@
     };
   }
 
-  /** Full sync scrape: infinite-scroll joins feed, then collect all groups + profile. */
+  /** Full sync scrape: lazy-scroll joins feed, then collect all groups + profile. */
   async function scrapeFacebookGroups() {
     const onJoins = /\/groups\/joins/i.test(location.href);
     if (onJoins) {
@@ -420,8 +437,10 @@
     }
     const profile = extractFacebookProfile();
     const scraped = scrapeFacebookGroupsFromDom();
+    const groups = scraped.groups || [];
+    console.log("[DISTRO] Scraped groups:", groups.length, groups[0]);
     return {
-      groups: scraped.groups,
+      groups,
       fbUserName: profile.name,
       fbAvatarUrl: profile.avatarUrl,
       fbProfile: profile,
@@ -1227,7 +1246,15 @@
             headers,
             body: JSON.stringify({ groups: groupsForApi }),
           });
-          const groupsBody = await groupsRes.json().catch(() => ({}));
+          const groupsText = await groupsRes.text();
+          const groupsBody = (() => {
+            try {
+              return groupsText ? JSON.parse(groupsText) : {};
+            } catch {
+              return {};
+            }
+          })();
+          console.log("[DISTRO] groups/sync →", groupsRes.status, groupsBody);
           if (groupsRes.ok && groupsBody.success) {
             data = groupsBody;
           }

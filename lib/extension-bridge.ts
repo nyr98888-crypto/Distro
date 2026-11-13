@@ -1,4 +1,37 @@
 import type { ScheduledPostDTO } from "@/lib/scheduled-posts";
+import { CHROME_EXTENSION_ID } from "@/lib/support";
+
+type ChromeRuntime = {
+  sendMessage: (
+    extensionId: string,
+    message: unknown,
+    optionsOrCallback?: unknown,
+    callback?: (response: unknown) => void
+  ) => void;
+  lastError?: { message?: string } | null;
+};
+
+function getChromeRuntime(): ChromeRuntime | null {
+  if (typeof window === "undefined") return null;
+  const chromeApi = (
+    window as Window & { chrome?: { runtime?: ChromeRuntime } }
+  ).chrome;
+  return chromeApi?.runtime ?? null;
+}
+
+/** True when the content-script bridge stamped the page DOM. */
+export function hasExtensionDomFlag(): boolean {
+  if (typeof document === "undefined") return false;
+  try {
+    const el = document.documentElement;
+    return (
+      el.getAttribute("data-distro-extension") === "1" ||
+      el.dataset.distroExtension === "1"
+    );
+  } catch {
+    return false;
+  }
+}
 
 export type LiveUpdateJob = {
   scheduledPostId: string;
@@ -42,6 +75,28 @@ function postToPage(message: Record<string, unknown>) {
   }
 }
 
+function sendViaChromeRuntime(
+  message: Record<string, unknown>,
+  onDone: (response: unknown) => void
+): boolean {
+  const extensionId = CHROME_EXTENSION_ID;
+  const runtime = getChromeRuntime();
+  if (!extensionId || !runtime?.sendMessage) return false;
+
+  try {
+    runtime.sendMessage(extensionId, message, (response: unknown) => {
+      if (runtime.lastError) {
+        onDone(null);
+        return;
+      }
+      onDone(response ?? null);
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function sendToExtensionWithResponse(
   message: Record<string, unknown>,
   cb?: (response: unknown) => void,
@@ -78,8 +133,19 @@ function sendToExtensionWithResponse(
   window.addEventListener("message", onBridgeResponse);
   window.setTimeout(() => finish(null), timeoutMs);
 
-  // Content-script web-bridge only — no hardcoded Extension ID
-  postToPage({ ...message, requestId });
+  // Prefer externally_connectable runtime when ID is set (works right after install).
+  const startedRuntime = sendViaChromeRuntime(message, (response) => {
+    if (response != null) {
+      finish(response);
+      return;
+    }
+    // Runtime missed — page bridge may still answer.
+    postToPage({ ...message, requestId });
+  });
+
+  if (!startedRuntime) {
+    postToPage({ ...message, requestId });
+  }
 }
 
 /** Subscribe to DISTRO_EXTENSION_READY from the content-script bridge. */
@@ -104,8 +170,16 @@ export function onExtensionReady(
   return () => window.removeEventListener("message", handler);
 }
 
-/** Detect installed extension via page bridge (no hardcoded Extension ID). */
+/**
+ * Detect installed extension via DOM flag, page bridge ping, or
+ * chrome.runtime.sendMessage(NEXT_PUBLIC_CHROME_EXTENSION_ID).
+ */
 export function pingExtension(onDone?: (ok: boolean) => void): void {
+  if (hasExtensionDomFlag()) {
+    onDone?.(true);
+    return;
+  }
+
   sendToExtensionWithResponse(
     { type: "DISTRO_PING", action: "PING" },
     (response) => {
@@ -115,10 +189,17 @@ export function pingExtension(onDone?: (ok: boolean) => void): void {
           ((response as { ok?: boolean }).ok === true ||
             (response as { pong?: boolean }).pong === true)
       );
-      onDone?.(ok);
+      onDone?.(ok || hasExtensionDomFlag());
     },
     2500
   );
+}
+
+/** Promise wrapper around pingExtension. */
+export function pingExtensionAsync(): Promise<boolean> {
+  return new Promise((resolve) => {
+    pingExtension((ok) => resolve(ok));
+  });
 }
 
 export function notifyExtensionSchedule(post: ScheduledPostDTO): void {

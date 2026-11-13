@@ -184,15 +184,35 @@ function patchLocalPost(postId, patch, done) {
 
 function withAuthHeaders(extra = {}) {
   return new Promise((resolve) => {
-    chrome.storage.local.get(["sessionToken"], (stored) => {
+    chrome.storage.local.get(["sessionToken", "userId"], (stored) => {
       const headers = {
         "Content-Type": "application/json",
         ...extra,
       };
+      const finish = (token) => {
+        if (token) headers.Authorization = `Bearer ${token}`;
+        resolve(headers);
+      };
       if (stored.sessionToken) {
-        headers.Authorization = `Bearer ${stored.sessionToken}`;
+        finish(stored.sessionToken);
+        return;
       }
-      resolve(headers);
+      // SameSite=Lax session cookie is not sent from extension origin —
+      // read distro_user_id from chrome.cookies and use as Bearer.
+      chrome.cookies.get(
+        { url: PRODUCTION_APP, name: "distro_user_id" },
+        (cookie) => {
+          const fromCookie = cookie?.value || stored.userId || null;
+          if (fromCookie) {
+            chrome.storage.local.set({
+              sessionToken: fromCookie,
+              userId: fromCookie,
+              authenticatedAt: Date.now(),
+            });
+          }
+          finish(fromCookie);
+        }
+      );
     });
   });
 }
@@ -246,14 +266,47 @@ async function apiFetchJson(path, options = {}) {
         headers,
         credentials: "include",
       });
-      const body = await res.json().catch(() => null);
+      const text = await res.text();
+      let body = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        body = { success: false, error: text?.slice(0, 200) || "Invalid JSON" };
+      }
+      console.log(
+        `[DISTRO] ${options.method || "GET"} ${base}${path} →`,
+        res.status,
+        body
+      );
       if (res.ok) return body;
-      if (body) lastBody = body;
-    } catch {
-      /* try next */
+      if (body) lastBody = { ...body, _httpStatus: res.status };
+    } catch (err) {
+      console.log(
+        `[DISTRO] ${options.method || "GET"} ${base}${path} failed:`,
+        err instanceof Error ? err.message : err
+      );
     }
   }
   return lastBody;
+}
+
+/** POST scraped groups to Turso via /api/groups/sync (Bearer + credentials). */
+async function postGroupsSync(groups) {
+  const groupsForApi = (groups || []).map((g) => ({
+    facebookGroupId: String(g.facebookGroupId || g.id || ""),
+    id: String(g.id || g.facebookGroupId || ""),
+    name: g.name || String(g.facebookGroupId || g.id || "Group"),
+    memberCount: typeof g.memberCount === "number" ? g.memberCount : 0,
+    url:
+      g.url ||
+      `https://www.facebook.com/groups/${g.facebookGroupId || g.id}`,
+  }));
+  const data = await apiFetchJson("/api/groups/sync", {
+    method: "POST",
+    body: JSON.stringify({ groups: groupsForApi, cleanupFakes: true }),
+  });
+  console.log("[DISTRO] groups/sync result:", data);
+  return data;
 }
 
 /** Notify Distro dashboard tabs that the active Facebook account changed. */
@@ -1000,11 +1053,14 @@ async function scrapeJoinedGroupsForWeb() {
 
   const groups = (result.groups || []).map((g) => ({
     facebookGroupId: String(g.facebookGroupId || g.id),
+    id: String(g.facebookGroupId || g.id),
     name: g.name,
     url: g.url || `https://www.facebook.com/groups/${g.facebookGroupId || g.id}`,
     memberCount:
       typeof g.memberCount === "number" ? g.memberCount : 0,
   }));
+
+  console.log("[DISTRO] Scraped groups:", groups.length, groups[0]);
 
   chrome.storage.local.set({
     syncedGroups: groups.map((g) => ({
@@ -1015,7 +1071,26 @@ async function scrapeJoinedGroupsForWeb() {
     })),
   });
 
-  return { success: true, ok: true, groups };
+  // Persist to Turso (dashboard may also POST; upsert is idempotent)
+  let sync = null;
+  if (groups.length) {
+    try {
+      sync = await postGroupsSync(groups);
+    } catch (err) {
+      console.log(
+        "[DISTRO] groups/sync POST failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  return {
+    success: true,
+    ok: true,
+    groups,
+    sync,
+    syncedCount: sync?.syncedCount ?? groups.length,
+  };
 }
 
 async function triggerGroupSyncAfterLogin() {
@@ -1268,17 +1343,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         groups: payload.groups || [],
         cookies: cookies.length ? cookies : payload.cookies || [],
       };
-      const groupsForApi = (body.groups || []).map((g) => ({
-        facebookGroupId: String(g.id || g.facebookGroupId || ""),
-        id: String(g.id || g.facebookGroupId || ""),
-        name: g.name,
-        memberCount: g.memberCount,
-        url: g.url,
-      }));
-      let data = await apiFetchJson("/api/groups/sync", {
-        method: "POST",
-        body: JSON.stringify({ groups: groupsForApi }),
-      });
+      let data = await postGroupsSync(body.groups || []);
       if (!data?.success) {
         data = await apiFetchJson("/api/facebook/groups", {
           method: "POST",

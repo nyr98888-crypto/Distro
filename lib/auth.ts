@@ -26,7 +26,10 @@ export async function getAuthenticatedUserId(): Promise<string | null> {
     const auth = headerStore.get("authorization") || "";
     const match = /^Bearer\s+(.+)$/i.exec(auth);
     if (match?.[1]) {
-      userId = verifyHandoffToken(match[1].trim());
+      const token = match[1].trim();
+      // Prefer signed extension/handoff token; also accept raw distro user id
+      // (extension stores cookie value when SameSite=Lax blocks cross-origin cookies).
+      userId = verifyHandoffToken(token) || token;
     }
   }
 

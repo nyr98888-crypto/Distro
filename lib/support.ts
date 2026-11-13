@@ -7,9 +7,22 @@ export const SUPPORT_EMAIL =
 export const SUPPORT_WHATSAPP_E164 =
   process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP?.replace(/\D/g, "") || "";
 
+/** Live Chrome Web Store listing — hardcoded so Vercel works without env edits. */
+export const DEFAULT_CHROME_EXTENSION_ID = "oogolchahhanackcmgicnnokaaehmkaj";
+export const DEFAULT_CHROME_STORE_URL =
+  "https://chromewebstore.google.com/detail/oogolchahhanackcmgicnnokaaehmkaj";
+
+export const CHROME_EXTENSION_ID =
+  process.env.NEXT_PUBLIC_CHROME_EXTENSION_ID?.trim() ||
+  DEFAULT_CHROME_EXTENSION_ID;
+
 export const CHROME_WEB_STORE_URL =
+  process.env.NEXT_PUBLIC_CHROME_STORE_URL?.trim() ||
   process.env.NEXT_PUBLIC_CHROME_WEB_STORE_URL?.trim() ||
-  "https://chromewebstore.google.com/detail/iegnppdljinjpehneimfjjchfnpgdbnk";
+  DEFAULT_CHROME_STORE_URL;
+
+/** Alias used by Sync Groups install redirect + dashboard banner. */
+export const CHROME_STORE_URL = CHROME_WEB_STORE_URL;
 
 const SUPPORT_TEXT_HE = "שלום, אני צריך עזרה ב-DISTRO";
 const SUPPORT_TEXT_EN = "Hi, I need help with DISTRO";

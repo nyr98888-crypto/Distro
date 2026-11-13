@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 type Tab = "privacy" | "terms" | "about";
 
-const APP_VERSION = "v1.0.0 Beta";
+const APP_VERSION = "v1.0.1";
 
 export function SettingsPanel() {
   const { t, dir, locale } = useI18n();

@@ -6,6 +6,12 @@
 (function () {
   function announceReady() {
     try {
+      document.documentElement.setAttribute("data-distro-extension", "1");
+      document.documentElement.dataset.distroExtension = "1";
+    } catch {
+      /* ignore */
+    }
+    try {
       window.postMessage(
         {
           source: "distro-extension",
